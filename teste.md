@@ -285,6 +285,4 @@ This creates a Stored XSS condition through SQL Injection.
 - https://cwe.mitre.org/data/definitions/79.html
 
 
-<img width="1155" height="470" alt="image" src="https://github.com/user-attachments/assets/bea6f85c-0cb6-42a8-b742-27919ed73b42" />
 
-<img width="1292" height="296" alt="image" src="https://github.com/user-attachments/assets/ce13bbf7-4765-4a17-8dac-edfe67ff78fa" />
