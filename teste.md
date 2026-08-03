@@ -161,6 +161,11 @@ A prova de conceito abaixo demonstra apenas o comportamento vulnerável e deve s
 - Não contém credenciais reais.
 - Não automatiza exploração em massa.
 
+
+<img width="1155" height="470" alt="image" src="https://github.com/user-attachments/assets/bea6f85c-0cb6-42a8-b742-27919ed73b42" />
+
+<img width="1292" height="296" alt="image" src="https://github.com/user-attachments/assets/ce13bbf7-4765-4a17-8dac-edfe67ff78fa" />
+
 ---
 
 ## 9. Passos para reprodução
