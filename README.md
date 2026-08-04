@@ -125,8 +125,8 @@ The following CVE identifiers have been assigned and are currently reserved. Tec
 
 | Status                  |  Count |
 | ----------------------- | -----: |
-| Public CVEs             | **12** |
-| Reserved CVEs           | **24** |
+| Public CVEs             | **1** |
+| Reserved CVEs           | **35** |
 | **Total Assigned CVEs** | **36** |
 
 ---
