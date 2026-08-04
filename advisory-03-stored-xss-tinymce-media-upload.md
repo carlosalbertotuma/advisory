@@ -250,4 +250,7 @@ Reported privately under coordinated vulnerability disclosure.
 
 Proof-of-concept, reproduction steps, and affected version evidence are available upon request.
 
+<img width="1157" height="274" alt="image" src="https://github.com/user-attachments/assets/0454bbb0-a569-494f-90f4-ee6874d6cd09" />
+
+
 Please credit the reporter and request a CVE identifier if applicable.
