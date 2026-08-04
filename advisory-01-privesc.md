@@ -1,14 +1,14 @@
 # Privilege Escalation via Unrestricted Role Assignment in User Management (Krayin CRM ≤ 2.2.5)
 
-Security Vulnerability: Privilege Escalation via Unrestricted Role Assignment
-Vulnerability Type: Improper Authorization
-CWE: CWE-269 / CWE-285 / CWE-639
-CVE: (pending)
-Affected Component: User Management (UserController::store() and UserController::update())
-Software: Krayin CRM
-Affected Versions: 2.2.4 and 2.2.5 (and all prior affected releases)
-Business Area: Customer Relationship Management (CRM)
-Submitter: bl4dsc4n
+- Security Vulnerability: Privilege Escalation via Unrestricted Role Assignment
+- Vulnerability Type: Improper Authorization
+- CWE: CWE-269 / CWE-285 / CWE-639
+- CVE: (pending)
+- Affected Component: User Management (UserController::store() and UserController::update())
+- Software: Krayin CRM
+- Affected Versions: 2.2.4 and 2.2.5 (and all prior affected releases)
+- Business Area: Customer Relationship Management (CRM)
+- Submitter: bl4dsc4n
 
 
 ## Summary
