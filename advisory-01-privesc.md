@@ -98,3 +98,6 @@ Full vertical privilege escalation from a delegated user-management role to supe
 
 ## Disclosure
 Reported privately under coordinated disclosure. PoC and version evidence (reproduced on a clean 2.2.5 install) available on request. Please credit the reporter and, if applicable, request a CVE ID for this issue.
+
+<img width="1474" height="227" alt="image" src="https://github.com/user-attachments/assets/79cc2408-86fb-4228-9f3b-dc714de275ff" />
+
