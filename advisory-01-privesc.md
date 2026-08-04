@@ -1,5 +1,16 @@
 # Privilege Escalation via Unrestricted Role Assignment in User Management (Krayin CRM ≤ 2.2.5)
 
+Security Vulnerability: Privilege Escalation via Unrestricted Role Assignment
+Vulnerability Type: Improper Authorization
+CWE: CWE-269 / CWE-285 / CWE-639
+CVE: (pending)
+Affected Component: User Management (UserController::store() and UserController::update())
+Software: Krayin CRM
+Affected Versions: 2.2.4 and 2.2.5 (and all prior affected releases)
+Business Area: Customer Relationship Management (CRM)
+Submitter: bl4dsc4n
+
+
 ## Summary
 `UserController::update()` (and `store()`) assign the `role_id` from client-supplied input and validate only that the role **exists** — never that the acting user is authorized to grant that role. Combined with mass assignment (`request()->all()`) and the absence of any role-hierarchy or ownership check, **any account that holds a delegated user-management permission can elevate itself, or any other account, to the full Administrator role (`permission_type = all`), obtaining complete super-administrator access.**
 
