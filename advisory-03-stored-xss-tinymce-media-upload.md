@@ -1,5 +1,17 @@
 # Stored XSS via SVG Sanitizer Bypass in TinyMCE Media Upload (Krayin CRM ≤ 2.2.5)
 
+## Presentation
+
+**Security Vulnerability:** Stored Cross-Site Scripting (Stored XSS) via SVG Sanitizer Bypass  
+**Vulnerability Type:** Cross-Site Scripting  
+**CWE:** CWE-79 (Primary), CWE-646 (Root Cause), CWE-434 (Contributing)  
+**CVE:** Pending  
+**Affected Component:** TinyMCE Media Upload (`TinyMCEController::storeMedia()` / `Sanitizer::isSvgFile()`)  
+**Software:** Krayin CRM  
+**Affected Versions:** ≤ 2.2.5  
+**Business Area:** Customer Relationship Management (CRM)  
+**Submitter:** bl4dsc4n
+
 ## CVE Description
 
 A stored cross-site scripting (XSS) vulnerability in the TinyMCE media upload functionality of Krayin CRM through 2.2.5 allows an authenticated user with TinyMCE upload permissions to bypass SVG sanitization and upload a malicious SVG file containing JavaScript. The vulnerability occurs because SVG detection relies on the client-controlled filename extension instead of the actual file content, allowing an attacker to upload SVG content using a non-SVG filename. The uploaded file is stored as an SVG on the public storage disk and served as `image/svg+xml`, resulting in JavaScript execution in the application origin.
