@@ -176,8 +176,20 @@ Recommended fixes include:
 
 - Vulnerability discovered during security assessment.
 - Vendor notified through responsible disclosure.
+- CVE Identifier: Pending.
 
+## Disclosure Timeline
+
+* **Day 0:** The vulnerability was privately reported to the vendor via email as part of a responsible disclosure process.
+* **A few hours later:** The vendor created a public issue acknowledging the problem and implemented a fix.
+* **Vendor response:** No acknowledgment, status update, or follow-up email was sent to the reporter after the initial disclosure.
+* **Resolution:** The vulnerability was fixed in version **2.2.5**.
+
+  
 <img width="1447" height="271" alt="image" src="https://github.com/user-attachments/assets/333b878a-37e5-4ae0-b247-9625bdf11b55" />
 
-- CVE Identifier: Pending.
+* **Resolution:**
+
+https://github.com/krayin/laravel-crm/pull/2614
+
 ```
