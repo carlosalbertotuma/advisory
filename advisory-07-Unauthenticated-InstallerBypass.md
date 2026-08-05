@@ -13,7 +13,7 @@
 
 ---
 
-**Fixed:** 2.2.5
+Fixed Version: 2.2.5
 
 ---
 
