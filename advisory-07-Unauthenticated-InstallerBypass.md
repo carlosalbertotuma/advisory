@@ -10,7 +10,9 @@
 **CWE-284:** Improper Access Control  
 **CWE-863:** Incorrect Authorization  
 **CVE:** Pending
+
 ---
+
 **Fixed:** 2.2.5
 
 ---
