@@ -227,4 +227,4 @@ Proof-of-concept, reproduction steps, and version verification are available upo
 
 Please credit the reporter and request a CVE identifier if applicable.
 
-<img width="996" height="284" alt="image" src="https://github.com/user-attachments/assets/7fdfbe8b-e81e-4bba-8af4-36c00600e7a7" />
+
