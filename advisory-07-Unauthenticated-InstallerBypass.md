@@ -11,8 +11,6 @@
 **CWE-863:** Incorrect Authorization  
 **CVE:** Pending
 
----
-
 Fixed Version: 2.2.5
 
 ---
