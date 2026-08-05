@@ -174,5 +174,8 @@ Recommended fixes include:
 
 - Vulnerability discovered during security assessment.
 - Vendor notified through responsible disclosure.
+
+<img width="1447" height="271" alt="image" src="https://github.com/user-attachments/assets/333b878a-37e5-4ae0-b247-9625bdf11b55" />
+
 - CVE Identifier: Pending.
 ```
