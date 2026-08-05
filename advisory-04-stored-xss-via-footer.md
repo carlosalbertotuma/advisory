@@ -258,3 +258,6 @@ Pending.
 * CWE-602
 * CWE-116
 * Laravel Blade Documentation
+
+<img width="1014" height="282" alt="image" src="https://github.com/user-attachments/assets/c5b3b198-ef71-4b51-abcb-2c4bac406802" />
+
