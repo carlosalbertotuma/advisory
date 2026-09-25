@@ -5,7 +5,7 @@
 - **Security Vulnerability:** Stored Cross-Site Scripting (Stored XSS)
 - **Vulnerability Type:** Cross-Site Scripting
 - **CWE:** CWE-79 (Primary), CWE-602 (Root Cause), CWE-434 (Contributing)
-- **CVE:** Pending
+- **CVE:** CVE-2026-97896
 - **Affected Component:** Configuration Upload (`ConfigurationController::store()` / `ConfigurationForm`)
 - **Software:** Krayin CRM
 - **Affected Versions:** ≤ 2.2.5
