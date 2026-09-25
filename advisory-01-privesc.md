@@ -3,7 +3,7 @@
 - Security Vulnerability: Privilege Escalation via Unrestricted Role Assignment
 - Vulnerability Type: Improper Authorization
 - CWE: CWE-269 / CWE-285 / CWE-639
-- CVE: (pending)
+- CVE: CVE-2026-97895
 - Affected Component: User Management (UserController::store() and UserController::update())
 - Software: Krayin CRM
 - Affected Versions: 2.2.4 and 2.2.5 (and all prior affected releases)
