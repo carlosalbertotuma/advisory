@@ -5,7 +5,7 @@
 **Security Vulnerability:** Stored Cross-Site Scripting (Stored XSS) via SVG Sanitizer Bypass  
 **Vulnerability Type:** Cross-Site Scripting  
 **CWE:** CWE-79 (Primary), CWE-646 (Root Cause), CWE-434 (Contributing)  
-**CVE:** Pending  
+**CVE:** CVE-2026-97897  
 **Affected Component:** TinyMCE Media Upload (`TinyMCEController::storeMedia()` / `Sanitizer::isSvgFile()`)  
 **Software:** Krayin CRM  
 **Affected Versions:** ≤ 2.2.5  
