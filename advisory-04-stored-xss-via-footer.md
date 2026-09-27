@@ -6,7 +6,7 @@
 | ---------------------- | --------------------------------------------------------------------- |
 | **Vulnerability Type** | Cross-Site Scripting (Stored XSS)                                     |
 | **CWE**                | CWE-79 (Primary), CWE-602 (Root Cause), CWE-116 (Contributing)        |
-| **CVE**                | Pending                                                               |
+| **CVE**                | CVE-2026-100882                                                       |
 | **Affected Component** | Configuration Management (ConfigurationController / General Settings) |
 | **Affected Parameter** | `general.settings.footer.label`                                       |
 | **Software**           | Krayin CRM                                                            |
