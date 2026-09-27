@@ -2,15 +2,15 @@
 
 ## Vulnerability Information
 
-**Product:** Krayin CRM 2.2.5  
-**Affected Versions:** Krayin CRM 2.2.4 and 2.2.5  
-**Vulnerability Type:** Insecure Direct Object Reference (IDOR) / Broken Access Control  
-**CWE:** CWE-639 — Authorization Bypass Through User-Controlled Key  
-**Additional CWE:** CWE-862 — Missing Authorization  
-**CVE:** CVE-2026-100884
-**Severity:** Medium  
-**CVSS v3.1 Score:** 6.5  
-**CVSS Vector:** AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N  
+- **Product:** Krayin CRM 2.2.5  
+- **Affected Versions:** Krayin CRM 2.2.4 and 2.2.5  
+- **Vulnerability Type:** Insecure Direct Object Reference (IDOR) / Broken Access Control  
+- **CWE:** CWE-639 — Authorization Bypass Through User-Controlled Key  
+- **Additional CWE:** CWE-862 — Missing Authorization  
+- **CVE:** CVE-2026-100884
+- **Severity:** Medium  
+- **CVSS v3.1 Score:** 6.5  
+- **CVSS Vector:** AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N  
 
 **Affected Component:** Email Attachment Download  
 **Affected Endpoint:**
