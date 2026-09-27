@@ -11,7 +11,7 @@
 | **Security Vulnerability** | Missing Function-Level Authorization                       |
 | **Vulnerability Type**     | Broken Function-Level Access Control                       |
 | **CWE**                    | CWE-862 (Missing Authorization)                            |
-| **CVE**                    | Pending                                                    |
+| **CVE**                    | CVE-2026-100883                                                    |
 | **Affected Component**     | Authorization Middleware (`Admin\Http\Middleware\Bouncer`) |
 | **Software**               | Krayin CRM                                                 |
 | **Affected Versions**      | ≤ 2.2.5                                                    |
