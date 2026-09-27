@@ -9,7 +9,7 @@
 **CWE-306:** Missing Authentication for Critical Function  
 **CWE-284:** Improper Access Control  
 **CWE-863:** Incorrect Authorization  
-**CVE:** Pending
+**CVE:**  CVE-2026-100885
 
 Fixed Version: 2.2.5
 
@@ -186,7 +186,7 @@ Recommended fixes include:
 * **Resolution:** The vulnerability was fixed in version **2.2.5**.
 
   
-<img width="1447" height="271" alt="image" src="https://github.com/user-attachments/assets/333b878a-37e5-4ae0-b247-9625bdf11b55" />
+
 
 * **Resolution:**
 
