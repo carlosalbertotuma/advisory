@@ -19,6 +19,7 @@ The issue was confirmed in a controlled environment using a PHP file uploaded th
 - **Relevant endpoint:** `/admin/content_manager.php`
 - **Inclusion endpoint:** `/shop_content.php`
 - **Related upload component:** `/admin/includes/modules/filemanager/dialog.php`
+- **Vendor:** `https://github.com/modified-shop/modified-shop`
 
 ## Vulnerability Classification
 
