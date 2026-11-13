@@ -22,6 +22,7 @@ A vulnerabilidade foi confirmada dinamicamente por meio de uma injeção time-ba
 | Técnica | Time-Based Blind SQL Injection |
 | Versão testada | Modified Shop 3.3.0 rev. 16825 |
 | Resultado | Confirmado dinamicamente |
+| Vendor | https://github.com/modified-shop/modified-shop |
 
 ## Detalhes técnicos
 
